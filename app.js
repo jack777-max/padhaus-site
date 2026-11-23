@@ -165,7 +165,7 @@ async function ensureWalletChain(chainId) {
  * Both paths end in an ethers BrowserProvider over the EIP-1193
  * provider, pointed at the active chain from chains.js. */
 
-const WC_PROJECT_ID = "741d580534af7268f886b3f563440286";
+const WC_PROJECT_ID = "5803c6fd6c9a5edce2ba7fc599059206";
 const WC_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.21.7/dist/index.umd.min.js";
 
 let wcProvider = null;        // WalletConnect provider instance (once initialized)
