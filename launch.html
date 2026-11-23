@@ -31,15 +31,21 @@
     <input id="name" placeholder="e.g. Test Coin">
     <label>Ticker / symbol</label>
     <input id="symbol" placeholder="e.g. KUJI">
+    <p id="imageNote" class="muted"></p>
     <label>Token image (optional)</label>
     <input id="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
     <div id="imagePreviewWrap" class="image-preview" style="display:none">
       <img id="imagePreview" class="token-logo" alt="Token image preview">
     </div>
-    <p id="imageNote" class="muted"></p>
-    <label>Description (optional — stored in the token metadata when an image is uploaded)</label>
+    <label>Description (optional)</label>
     <input id="description" placeholder="One line about your token">
-    <label>Metadata URI (optional — not used when an image is uploaded)</label>
+    <label>Website (optional)</label>
+    <input id="website" placeholder="https://yourproject.com">
+    <label>X / Twitter (optional)</label>
+    <input id="twitter" placeholder="@yourproject or https://x.com/yourproject">
+    <label>Telegram (optional)</label>
+    <input id="telegram" placeholder="@yourgroup or https://t.me/yourgroup">
+    <label>Metadata URI (optional — if filled in, it takes precedence and the image, description and link fields above are ignored)</label>
     <input id="uri" placeholder="ipfs://…">
     <label>Trade fee (%) — your choice, 0–5%</label>
     <input id="fee" type="number" min="0" max="5" step="0.1" value="1">
@@ -61,9 +67,15 @@ let imageFile = null;
     document.getElementById("connect").disabled = true;
   }
   if (!uploadConfigured()) {
-    document.getElementById("image").disabled = true;
+    // The whole metadata section (image, description, links) is built and
+    // uploaded through the relay; without it, the manual Metadata URI
+    // field below is the only metadata path.
+    for (const id of ["image", "description", "website", "twitter", "telegram"]) {
+      document.getElementById(id).disabled = true;
+    }
     document.getElementById("imageNote").textContent =
-      "Image upload is not configured yet — you can still launch without an image.";
+      "Metadata upload is not configured yet — the image, description and link fields are disabled. " +
+      "You can still launch, or paste a Metadata URI below if you already have one.";
   }
 })();
 document.getElementById("image").onchange = (ev) => {
@@ -107,16 +119,24 @@ document.getElementById("launch").onclick = async () => {
   }
   const feeBps = Math.round(feePercent * 100);
   try {
+    // Precedence: a manually entered Metadata URI wins outright — no
+    // metadata JSON is built and nothing is uploaded. Otherwise, when any
+    // metadata input is present (image, description, or a project link),
+    // the JSON is built and uploaded through the relay; any validation or
+    // upload failure throws and aborts the launch (handled by the catch
+    // below) — never submit a broken URI.
     let finalUri = uri;
-    if (imageFile) {
-      // Upload image + metadata first; any failure throws and aborts the
-      // launch (handled by the catch below) — never submit a broken URI.
-      status.textContent = "Uploading image and metadata…";
-      finalUri = await buildImageMetadataURI({
-        name, symbol,
-        description: document.getElementById("description").value.trim(),
-        imageFile
-      });
+    if (!finalUri) {
+      const description = document.getElementById("description").value.trim();
+      const website = document.getElementById("website").value.trim();
+      const twitter = document.getElementById("twitter").value.trim();
+      const telegram = document.getElementById("telegram").value.trim();
+      if (imageFile || description || website || twitter || telegram) {
+        status.textContent = "Uploading metadata…";
+        finalUri = await buildMetadataURI({
+          name, symbol, description, imageFile, website, twitter, telegram
+        });
+      }
     }
     const factory = getWriteFactory(signer);
     status.textContent = "Waiting for wallet signature…";

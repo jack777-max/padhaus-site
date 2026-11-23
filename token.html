@@ -31,6 +31,7 @@
     </div>
   </div>
   <p class="muted" id="description"></p>
+  <p id="links"></p>
   <div class="card">
     <table>
       <tr><th>Spot price</th><td id="price">—</td></tr>
@@ -81,10 +82,12 @@ async function refresh() {
   if (account) {
     document.getElementById("myBal").textContent = fmt(await token.balanceOf(account)) + " token";
   }
-  // Logo + description come from the token's metadataURI (IPFS); the
-  // on-chain name/symbol above stay authoritative if metadata is absent.
+  // Logo, description and project links come from the token's
+  // metadataURI (IPFS); the on-chain name/symbol above stay authoritative
+  // if metadata is absent.
   const logoSlot = document.getElementById("logoSlot");
   logoSlot.innerHTML = tokenLogoPlaceholderHtml(symbol);
+  document.getElementById("links").innerHTML = "";
   resolveTokenMetadata(tokenAddr, curve.metadataURI).then((meta) => {
     if (!meta) return;
     if (meta.image) {
@@ -92,6 +95,8 @@ async function refresh() {
       logoSlot.querySelector("img").onerror = () => { logoSlot.innerHTML = tokenLogoPlaceholderHtml(symbol); };
     }
     if (meta.description) document.getElementById("description").textContent = meta.description;
+    const linksHtml = tokenLinksHtml(meta);
+    if (linksHtml) document.getElementById("links").innerHTML = linksHtml;
   }).catch(() => {});
   await updateQuotes();
 }

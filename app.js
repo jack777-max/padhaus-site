@@ -267,7 +267,19 @@ function ipfsToHttp(uri) {
   return null;
 }
 
-/* Resolve a token's metadataURI to { name, symbol, description, image }.
+/* A metadata field that must be a plain web link (project website / X /
+ * Telegram): only http(s) URLs are accepted, anything else (including
+ * javascript: or data: values planted in third-party metadata) is dropped
+ * so it can never reach an href. Returns null for absent/invalid values. */
+function metaHttpUrl(value) {
+  if (typeof value !== "string") return null;
+  const u = value.trim();
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  return null;
+}
+
+/* Resolve a token's metadataURI to
+ * { name, symbol, description, image, website, twitter, telegram }.
  * ipfs:// URIs are fetched through the public gateway; https:// URIs are
  * fetched directly. Returns null on any failure — callers fall back to the
  * on-chain name/symbol and a letter placeholder. Results (including
@@ -293,7 +305,10 @@ function resolveTokenMetadata(tokenAddr, metadataURI) {
         name: typeof data.name === "string" ? data.name : null,
         symbol: typeof data.symbol === "string" ? data.symbol : null,
         description: typeof data.description === "string" ? data.description : null,
-        image: ipfsToHttp(data.image)
+        image: ipfsToHttp(data.image),
+        website: metaHttpUrl(data.website) || metaHttpUrl(data.external_url),
+        twitter: metaHttpUrl(data.twitter),
+        telegram: metaHttpUrl(data.telegram)
       };
     } catch (_) { return null; }
   })();
@@ -305,6 +320,27 @@ function resolveTokenMetadata(tokenAddr, metadataURI) {
 function tokenLogoPlaceholderHtml(symbol) {
   const letter = (String(symbol || "?").trim().charAt(0) || "?").toUpperCase();
   return '<span class="token-logo token-logo-placeholder">' + esc(letter) + "</span>";
+}
+
+/* Project links from resolved metadata, as [{ label, url }] in display
+ * order. Empty when the metadata carries no usable links. */
+function tokenLinks(meta) {
+  if (!meta) return [];
+  const links = [];
+  if (meta.website) links.push({ label: "Website", url: meta.website });
+  if (meta.twitter) links.push({ label: "X", url: meta.twitter });
+  if (meta.telegram) links.push({ label: "Telegram", url: meta.telegram });
+  return links;
+}
+
+/* The links as one labeled, external-link row ("" when there are none),
+ * shared by the token page and the homepage cards. */
+function tokenLinksHtml(meta) {
+  const links = tokenLinks(meta);
+  if (!links.length) return "";
+  return '<span class="token-links">' + links.map((l) =>
+    '<a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + l.label + "</a>"
+  ).join(" · ") + "</span>";
 }
 
 /* ---------- Token image upload (relay) ----------
@@ -340,16 +376,109 @@ async function uploadFileToRelay(file, filename) {
   return data.cid;
 }
 
-/* Uploads the chosen token image, then a metadata JSON of the shape
- * { name, symbol, description, image: "ipfs://<imageCid>" }, and returns
- * the metadata's ipfs:// URI for createToken. Throws on any failure —
- * the caller must abort the launch rather than submit a broken URI. */
-async function buildImageMetadataURI({ name, symbol, description, imageFile }) {
-  const imageCid = await uploadFileToRelay(imageFile);
-  const metadata = { name, symbol, description: description || "", image: "ipfs://" + imageCid };
+/* ---------- Launch-form link normalization ----------
+ * The Website / X / Telegram fields accept full URLs; X and Telegram
+ * also accept bare handles ("name" or "@name"). Each helper returns ""
+ * for empty input, the normalized https:// URL on success, and throws an
+ * Error with a user-readable message on invalid input — the launch form
+ * treats a throw as "abort the submit", exactly like an upload failure. */
+
+function normalizeWebsiteUrl(value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  let parsed;
+  try {
+    // A bare domain ("example.com") is read as https://example.com.
+    parsed = new URL(/^[a-z][a-z0-9+.-]*:/i.test(v) ? v : "https://" + v);
+  } catch (_) {
+    throw new Error("Website must be a valid http(s) URL, e.g. https://example.com.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Website must be a valid http(s) URL, e.g. https://example.com.");
+  }
+  return parsed.href;
+}
+
+/* Extracts the handle from an x.com / twitter.com URL, or null when the
+ * value is not a URL on one of those hosts. */
+function handleFromSocialUrl(v, hosts) {
+  if (!/^https?:\/\//i.test(v)) return null;
+  let parsed;
+  try { parsed = new URL(v); } catch (_) { return null; }
+  if (!hosts.includes(parsed.hostname.toLowerCase())) return null;
+  const segment = parsed.pathname.split("/").filter(Boolean)[0] || "";
+  return decodeURIComponent(segment);
+}
+
+function normalizeXUrl(value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  const fromUrl = handleFromSocialUrl(v, ["x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"]);
+  const handle = (fromUrl !== null ? fromUrl : v).replace(/^@+/, "").replace(/\/+$/, "");
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) {
+    throw new Error("X (Twitter) must be a handle like @name or a URL like https://x.com/name.");
+  }
+  return "https://x.com/" + handle;
+}
+
+function normalizeTelegramUrl(value) {
+  const v = String(value || "").trim();
+  if (!v) return "";
+  if (/^https?:\/\//i.test(v)) {
+    let parsed;
+    try { parsed = new URL(v); } catch (_) { parsed = null; }
+    if (parsed && ["t.me", "www.t.me", "telegram.me", "www.telegram.me"].includes(parsed.hostname.toLowerCase())) {
+      const segment = parsed.pathname.split("/").filter(Boolean)[0] || "";
+      // Public invite links (t.me/+… and t.me/joinchat/…) have no handle;
+      // they are already full URLs, so keep them as entered.
+      if (segment.startsWith("+") || segment.toLowerCase() === "joinchat") return parsed.href;
+      const handle = decodeURIComponent(segment).replace(/^@+/, "");
+      if (!/^[A-Za-z0-9_]{5,32}$/.test(handle)) {
+        throw new Error("Telegram must be a handle like @name or a URL like https://t.me/name.");
+      }
+      return "https://t.me/" + handle;
+    }
+    throw new Error("Telegram must be a handle like @name or a URL like https://t.me/name.");
+  }
+  const handle = v.replace(/^@+/, "").replace(/\/+$/, "");
+  if (!/^[A-Za-z0-9_]{5,32}$/.test(handle)) {
+    throw new Error("Telegram must be a handle like @name or a URL like https://t.me/name.");
+  }
+  return "https://t.me/" + handle;
+}
+
+/* Builds the launch metadata JSON from whichever optional inputs are
+ * present (image, description, website, twitter, telegram), uploads the
+ * image first when one is chosen, then uploads the JSON itself, and
+ * returns the metadata's ipfs:// URI for createToken. Links are
+ * validated/normalized before anything is uploaded, so an invalid entry
+ * aborts the launch without wasting an upload. Empty fields are omitted
+ * from the JSON. Throws on any failure — the caller must abort the
+ * launch rather than submit a broken URI. Shape:
+ * { name, symbol, description?, image?, website?, external_url?,
+ *   twitter?, telegram? } — external_url mirrors website, following the
+ * common NFT-metadata convention. */
+async function buildMetadataURI({ name, symbol, description, imageFile, website, twitter, telegram }) {
+  const site = normalizeWebsiteUrl(website);
+  const xUrl = normalizeXUrl(twitter);
+  const tgUrl = normalizeTelegramUrl(telegram);
+  const metadata = { name, symbol };
+  if (description) metadata.description = description;
+  if (imageFile) {
+    const imageCid = await uploadFileToRelay(imageFile);
+    metadata.image = "ipfs://" + imageCid;
+  }
+  if (site) { metadata.website = site; metadata.external_url = site; }
+  if (xUrl) metadata.twitter = xUrl;
+  if (tgUrl) metadata.telegram = tgUrl;
   const blob = new Blob([JSON.stringify(metadata)], { type: "application/json" });
   const metadataCid = await uploadFileToRelay(blob, "metadata.json");
   return "ipfs://" + metadataCid;
+}
+
+/* Backwards-compatible alias: the image-only entry point. */
+async function buildImageMetadataURI(args) {
+  return buildMetadataURI(args);
 }
 
 /* ---------- Discovery: factory event scanning ----------

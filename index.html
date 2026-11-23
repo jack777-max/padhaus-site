@@ -133,6 +133,7 @@
       <p class="muted">Spot price: ${fmt(t.price)} ${sym} · Market cap: ${fmt(mcap)} ${sym} · Sold from curve: ${fmt(t.curve.tokensSold)} · ${t.curve.graduated ? "GRADUATED" : "On bonding curve"}</p>
       <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
       <p class="muted">Curve progress: ${pct.toFixed(1)}% · Volume: ${t.scanned ? fmt(t.volumeWei) + " " + sym : "—"} · Last activity: ${t.lastAt ? timeAgo(t.lastAt) : "—"}</p>
+      <div data-links-slot="${t.addr}"></div>
       <a href="token.html?address=${t.addr}&chain=${g.cfg.chainId}"><button class="secondary">Details / Trade</button></a>
     </div>`;
   }
@@ -144,20 +145,28 @@
     const list = body.querySelector(".group-list");
     if (!list) return;
     list.innerHTML = sortedGroupTokens(g).map((t) => cardHtml(g, t)).join("");
-    fillLogos(chainId);
+    fillMetadata(chainId);
   }
 
-  function fillLogos(chainId) {
+  function fillMetadata(chainId) {
     const g = groups.get(chainId);
     const body = groupBody(chainId);
     if (!g || !body) return;
     for (const t of g.tokens) {
       resolveTokenMetadata(t.addr, t.curve.metadataURI).then((meta) => {
-        if (!meta || !meta.image) return;
-        const slot = body.querySelector('[data-logo-slot="' + t.addr + '"]');
-        if (!slot) return;
-        slot.innerHTML = '<img class="token-logo" src="' + esc(meta.image) + '" alt="" loading="lazy">';
-        slot.querySelector("img").onerror = () => { slot.innerHTML = tokenLogoPlaceholderHtml(t.symbol); };
+        if (!meta) return;
+        if (meta.image) {
+          const slot = body.querySelector('[data-logo-slot="' + t.addr + '"]');
+          if (slot) {
+            slot.innerHTML = '<img class="token-logo" src="' + esc(meta.image) + '" alt="" loading="lazy">';
+            slot.querySelector("img").onerror = () => { slot.innerHTML = tokenLogoPlaceholderHtml(t.symbol); };
+          }
+        }
+        const linksHtml = tokenLinksHtml(meta);
+        if (linksHtml) {
+          const linksSlot = body.querySelector('[data-links-slot="' + t.addr + '"]');
+          if (linksSlot) linksSlot.innerHTML = "<p>" + linksHtml + "</p>";
+        }
       }).catch(() => {});
     }
   }
