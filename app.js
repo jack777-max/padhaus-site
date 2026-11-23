@@ -324,16 +324,11 @@ function banner(el, msg, isError = false) {
   el.className = isError ? "banner error" : "banner";
 }
 
-/* If the active chain is not deployed yet, show a notice and return
- * true — the calling page must disable its write buttons. */
+/* If the active chain is not deployed yet, return true — the calling
+ * page must disable its write buttons. No banner is shown (owner's
+ * call, 2026-11-23: no not-live notices on the site). */
 function deploymentNotice(el) {
-  if (!isDeployed()) {
-    const cfg = getChain();
-    banner(el, cfg.name + " — no tokens on this network yet. " +
-      "Launch and trade actions are disabled here.", true);
-    return true;
-  }
-  return false;
+  return !isDeployed();
 }
 
 /* ---------- Network switcher (header) ---------- */
