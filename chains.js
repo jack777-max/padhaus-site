@@ -60,6 +60,19 @@ const PADHAUS_CHAINS = {
     explorerUrl: "https://bscscan.com",
     testnet: false
   },
+  // Preset — belum terdeploy (factoryAddress null). Ditambahkan 2026-11-23
+  // atas permintaan Ahmad; RPC terverifikasi hidup (eth_chainId = 0x1).
+  // Router graduasi masih TODO-VERIFY (lihat chains/ethereum.json).
+  1: {
+    chainId: 1,
+    name: "Ethereum",
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
+    factoryAddress: null,
+    nativeSymbol: "ETH",
+    nativeName: "Ether",
+    explorerUrl: "https://etherscan.io",
+    testnet: false
+  },
   // Preset — belum terdeploy (factoryAddress null). Router graduasi untuk
   // chain ini masih TODO-VERIFY (lihat chains/base.json).
   8453: {
@@ -75,7 +88,7 @@ const PADHAUS_CHAINS = {
 };
 
 /* Urutan tampil di dropdown pemilih jaringan (chain default pertama). */
-const PADHAUS_CHAIN_ORDER = [97, 4663, 56, 8453];
+const PADHAUS_CHAIN_ORDER = [97, 4663, 56, 8453, 1];
 
 /* Chain aktif bila pengguna belum pernah memilih. */
 const PADHAUS_DEFAULT_CHAIN_ID = 97;
