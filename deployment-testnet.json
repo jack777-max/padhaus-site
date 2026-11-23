@@ -1,0 +1,47 @@
+{
+  "network": "BSC Testnet",
+  "chainId": 97,
+  "rpc": "https://bsc-testnet-rpc.publicnode.com",
+  "explorer": "https://testnet.bscscan.com",
+  "status": "deployed",
+  "deployer": "0x793d51B5d919B594e5948F151480CA5EedcDF39d",
+  "keyFile": ".testnet-key (sekali-pakai, mode 600, nilai tidak dicatat di sini)",
+  "contracts": {
+    "mockRouter": {
+      "address": "0x2c01f389DD81ee661799764609DB60603dFCc286",
+      "deployTx": "0xea588f30c85971695d83590acea59a4b0b03bcfa262a6ff14d82fedfd44a2661"
+    },
+    "launchpadFactory": {
+      "address": "0xa6Bde26F2d09898DdA8Fc72aCD7BFDA0129f7FD1",
+      "deployTx": "0x40d919f732cf80c641e4cfa81d5e8191517f0dafd8ef5c91fb6ee22d6d126476"
+    }
+  },
+  "constructorParams": {
+    "totalSupply": "1000000000000000000000000000",
+    "saleAllocationBps": 8000,
+    "virtualQuoteInit": "1000000000000000000",
+    "virtualTokenInit": "1000000000000000000000000000",
+    "graduationThreshold": "3000000000000000000",
+    "feeRecipient": "0x793d51B5d919B594e5948F151480CA5EedcDF39d",
+    "note": "Parameter diskalakan untuk testnet (virtualQuote 1 tBNB, graduasi 3 tBNB) agar terjangkau saldo faucet."
+  },
+  "deployedAt": "2026-11-22T22:36:11.785371+00:00",
+  "e2e": {
+    "testToken": {
+      "address": "0x0B33C280a570b5f1897839B0BE2dAEFAfAd2841E",
+      "name": "Token Uji M2",
+      "symbol": "UJI",
+      "createTx": "0x73473e758a1f5bade359e047b22e30f65c9946895d633a6c6992dc1fc7a2d56a"
+    },
+    "buy": {
+      "amountIn": "0.05 tBNB",
+      "tx": "0xabd9a3b8680ec86e3c1dccb556d903d02ad39a4a15d4f6c2d7d2a93ba6a2e080"
+    },
+    "stateAfter": {
+      "tokenCount": "1",
+      "spotPriceWei": "1101450249 [1.101e9]",
+      "buyerTokenBalanceWei": "47165316817532158170557408 [4.716e25]"
+    },
+    "verifiedAt": "2026-11-22T22:36:27.790720+00:00"
+  }
+}

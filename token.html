@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Padhaus — Detail Token</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<header>
+  <a href="index.html">Padhaus</a> <span class="muted">— fair-launch launchpad</span>
+  <nav>
+    <a href="index.html">Daftar Token</a>
+    <a href="launch.html">Launch Token</a>
+  </nav>
+  <span class="muted" style="margin-left:auto">BSC Testnet · chain 97 · PROTOTIPE</span>
+</header>
+<main>
+  <div id="notice" class="banner"></div>
+  <h2 id="title">Detail token</h2>
+  <p class="mono" id="addr"></p>
+  <div class="card">
+    <table>
+      <tr><th>Harga spot</th><td id="price">—</td></tr>
+      <tr><th>Quote terkumpul (real)</th><td id="realQuote">—</td></tr>
+      <tr><th>Token terjual dari kurva</th><td id="sold">—</td></tr>
+      <tr><th>Status</th><td id="grad">—</td></tr>
+      <tr><th>Kreator</th><td id="creator" class="mono">—</td></tr>
+      <tr><th>Saldo token saya</th><td id="myBal">— (hubungkan wallet)</td></tr>
+    </table>
+    <p><button id="connect" class="secondary">Hubungkan Wallet</button> <span id="acct" class="muted"></span></p>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h3>Beli</h3>
+      <label>Jumlah tBNB</label>
+      <input id="buyAmount" type="number" step="any" min="0" placeholder="0.05">
+      <p class="muted" id="buyQuote">Estimasi: —</p>
+      <button id="buyBtn" disabled>Beli</button>
+    </div>
+    <div class="card">
+      <h3>Jual</h3>
+      <label>Jumlah token</label>
+      <input id="sellAmount" type="number" step="any" min="0" placeholder="1000">
+      <p class="muted" id="sellQuote">Estimasi: —</p>
+      <button id="sellBtn" disabled>Jual</button>
+    </div>
+  </div>
+  <p id="status" class="muted"></p>
+</main>
+<script>
+const params = new URLSearchParams(location.search);
+const tokenAddr = params.get("address");
+let signer = null, account = null;
+
+async function refresh() {
+  const factory = getReadFactory();
+  const token = getReadToken(tokenAddr);
+  const [name, symbol, price, curve] = await Promise.all([
+    token.name(), token.symbol(), factory.spotPrice(tokenAddr), factory.getCurve(tokenAddr)
+  ]);
+  document.getElementById("title").textContent = name + " ($" + symbol + ")";
+  document.getElementById("addr").textContent = tokenAddr;
+  document.getElementById("price").textContent = fmt(price) + " tBNB / token";
+  document.getElementById("realQuote").textContent = fmt(curve.realQuote) + " tBNB";
+  document.getElementById("sold").textContent = fmt(curve.tokensSold) + " token";
+  document.getElementById("grad").textContent = curve.graduated ? "Sudah graduasi (kurva berhenti)" : "Di bonding curve";
+  document.getElementById("creator").textContent = curve.creator;
+  if (account) {
+    document.getElementById("myBal").textContent = fmt(await token.balanceOf(account)) + " token";
+  }
+  await updateQuotes();
+}
+
+async function updateQuotes() {
+  const factory = getReadFactory();
+  const b = document.getElementById("buyAmount").value;
+  const s = document.getElementById("sellAmount").value;
+  try {
+    if (b && Number(b) > 0) {
+      const [out, fee] = await factory.quoteBuy(tokenAddr, ethers.parseEther(b));
+      document.getElementById("buyQuote").textContent = "Estimasi terima: " + fmt(out) + " token (fee " + fmt(fee) + " tBNB)";
+    }
+    if (s && Number(s) > 0) {
+      const [net, fee] = await factory.quoteSell(tokenAddr, ethers.parseEther(s));
+      document.getElementById("sellQuote").textContent = "Estimasi terima: " + fmt(net) + " tBNB (fee " + fmt(fee) + " tBNB)";
+    }
+  } catch (_) { /* abaikan saat input tidak valid */ }
+}
+
+(async () => {
+  await loadDeployment();
+  if (deploymentNotice(document.getElementById("notice"))) return;
+  if (!tokenAddr) { banner(document.getElementById("notice"), "Parameter ?address= tidak ada.", true); return; }
+  await refresh();
+})();
+
+document.getElementById("connect").onclick = async () => {
+  try {
+    ({ signer, account } = await connectWallet());
+    document.getElementById("acct").textContent = account;
+    document.getElementById("buyBtn").disabled = false;
+    document.getElementById("sellBtn").disabled = false;
+    await refresh();
+  } catch (e) { document.getElementById("status").textContent = "Gagal: " + e.message; }
+};
+document.getElementById("buyAmount").oninput = updateQuotes;
+document.getElementById("sellAmount").oninput = updateQuotes;
+
+document.getElementById("buyBtn").onclick = async () => {
+  const status = document.getElementById("status");
+  const amt = document.getElementById("buyAmount").value;
+  try {
+    const factory = getWriteFactory(signer);
+    const [out] = await getReadFactory().quoteBuy(tokenAddr, ethers.parseEther(amt));
+    const minOut = out * 99n / 100n; // slippage 1%
+    status.textContent = "Menunggu tanda tangan…";
+    const tx = await factory.buy(tokenAddr, minOut, { value: ethers.parseEther(amt) });
+    status.textContent = "Terkirim: " + tx.hash + " — menunggu konfirmasi…";
+    await tx.wait();
+    status.textContent = "Beli berhasil. Tx: " + tx.hash;
+    await refresh();
+  } catch (e) { status.textContent = "Gagal: " + (e.shortMessage || e.message); }
+};
+
+document.getElementById("sellBtn").onclick = async () => {
+  const status = document.getElementById("status");
+  const amt = document.getElementById("sellAmount").value;
+  try {
+    const amount = ethers.parseEther(amt);
+    const token = new ethers.Contract(tokenAddr, ERC20_ABI, signer);
+    const fAddr = factoryAddress();
+    const allowance = await token.allowance(account, fAddr);
+    if (allowance < amount) {
+      status.textContent = "Approve dulu: menunggu tanda tangan…";
+      const atx = await token.approve(fAddr, amount);
+      await atx.wait();
+    }
+    const factory = getWriteFactory(signer);
+    const [net] = await getReadFactory().quoteSell(tokenAddr, amount);
+    const minOut = net * 99n / 100n;
+    status.textContent = "Menunggu tanda tangan jual…";
+    const tx = await factory.sell(tokenAddr, amount, minOut);
+    status.textContent = "Terkirim: " + tx.hash + " — menunggu konfirmasi…";
+    await tx.wait();
+    status.textContent = "Jual berhasil. Tx: " + tx.hash;
+    await refresh();
+  } catch (e) { status.textContent = "Gagal: " + (e.shortMessage || e.message); }
+};
+</script>
+</body>
+</html>

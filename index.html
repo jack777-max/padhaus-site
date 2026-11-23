@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Padhaus — Fair-Launch Launchpad (BSC Testnet Prototype)</title>
+<meta name="description" content="Padhaus is a fair-launch launchpad: launching is free, creators set their own trade fee, and fees are frozen per token at launch.">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<header>
+  <a href="index.html" class="brand">Padhaus</a> <span class="muted">— fair-launch launchpad</span>
+  <nav>
+    <a href="index.html">Tokens</a>
+    <a href="launch.html">Launch Token</a>
+  </nav>
+  <span class="badge" style="margin-left:auto">Prototype — BSC Testnet · chain 97</span>
+</header>
+<main>
+  <section class="hero">
+    <span class="badge badge-hero">Prototype — BSC Testnet</span>
+    <h1>Launch fair.<br>Trade fair.</h1>
+    <p class="hero-sub">Padhaus is a fair-launch launchpad with no gatekeepers and no surprises.
+    Anyone can launch a token on a transparent bonding curve — and the rules you launch with
+    are the rules your token keeps, forever.</p>
+    <div class="hero-cta">
+      <a href="launch.html"><button>Launch a token — it's free</button></a>
+      <a href="#tokens"><button class="secondary">Browse tokens</button></a>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <h3>Free to launch</h3>
+        <p>There is no launch fee. You pay network gas only — creating a token costs
+        nothing but the transaction itself.</p>
+      </div>
+      <div class="feature">
+        <h3>Your fee, your call</h3>
+        <p>Set your own trade fee at launch, anywhere from 0% to 5%. Whatever you choose
+        is split 50/50 between you, the creator, and the platform.</p>
+      </div>
+      <div class="feature">
+        <h3>Frozen at launch</h3>
+        <p>Your fee is locked into the token the moment it launches. It can never be raised,
+        lowered, or changed unilaterally — by anyone, including us.</p>
+      </div>
+      <div class="feature">
+        <h3>Built to graduate</h3>
+        <p>Tokens trade on a bonding curve. When the curve completes, the token graduates
+        to a DEX liquidity pool. A flat 2% graduation fee applies only at that moment.</p>
+      </div>
+    </div>
+    <p class="muted hero-note">This site is a public testnet prototype. Everything here runs on BSC Testnet —
+    the tokens are test tokens with no real-world value.</p>
+  </section>
+
+  <div id="notice" class="banner"></div>
+  <h2 id="tokens">Tokens launched</h2>
+  <p class="muted">Read live from the factory contract on BSC Testnet. Click a token for details and trading.</p>
+  <div id="list"><p class="muted">Loading…</p></div>
+</main>
+<footer>
+  <span class="muted">Padhaus — fair-launch launchpad · Prototype on BSC Testnet (chain 97). Testnet tokens have no real-world value.</span>
+</footer>
+<script>
+(async () => {
+  const listEl = document.getElementById("list");
+  try {
+    await loadDeployment();
+    if (deploymentNotice(document.getElementById("notice"))) {
+      listEl.innerHTML = '<p class="muted">No data yet — the factory contract is not deployed on testnet.</p>';
+      return;
+    }
+    const factory = getReadFactory();
+    const count = Number(await factory.tokenCount());
+    if (count === 0) {
+      listEl.innerHTML = '<p class="muted">The factory is live, but no tokens yet. <a href="launch.html">Launch the first one</a>.</p>';
+      return;
+    }
+    let html = "";
+    for (let i = 0; i < count; i++) {
+      const addr = await factory.allTokens(i);
+      const token = getReadToken(addr);
+      const [name, symbol, price, curve] = await Promise.all([
+        token.name(), token.symbol(), factory.spotPrice(addr), factory.getCurve(addr)
+      ]);
+      html += `<div class="card">
+        <h3>${name} <span class="muted">($${symbol})</span></h3>
+        <div class="mono">${addr}</div>
+        <p class="muted">Spot price: ${fmt(price)} tBNB · Sold from curve: ${fmt(curve.tokensSold)} · ${curve.graduated ? "GRADUATED" : "On bonding curve"}</p>
+        <a href="token.html?address=${addr}"><button class="secondary">Details / Trade</button></a>
+      </div>`;
+    }
+    listEl.innerHTML = html;
+  } catch (e) {
+    banner(document.getElementById("notice"), "Failed to load: " + e.message, true);
+    listEl.innerHTML = "";
+  }
+})();
+</script>
+</body>
+</html>

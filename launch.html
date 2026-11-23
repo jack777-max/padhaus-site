@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Padhaus — Launch Token</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+<header>
+  <a href="index.html">Padhaus</a> <span class="muted">— fair-launch launchpad</span>
+  <nav>
+    <a href="index.html">Daftar Token</a>
+    <a href="launch.html">Launch Token</a>
+  </nav>
+  <span class="muted" style="margin-left:auto">BSC Testnet · chain 97 · PROTOTIPE</span>
+</header>
+<main>
+  <div id="notice" class="banner"></div>
+  <h2>Launch token baru</h2>
+  <p class="muted">Supply tetap 1 miliar, tanpa mint lanjutan, tanpa tax. Token langsung
+  diperdagangkan di bonding curve. Butuh wallet (MetaMask) di BSC Testnet + sedikit tBNB untuk gas.</p>
+  <div class="card">
+    <label>Nama token</label>
+    <input id="name" placeholder="mis. Koin Uji">
+    <label>Ticker / symbol</label>
+    <input id="symbol" placeholder="mis. KUJI">
+    <label>Metadata URI (deskripsi/gambar, boleh kosong)</label>
+    <input id="uri" placeholder="ipfs://…">
+    <label>Fee trade (%) — pilihanmu, 0–5%</label>
+    <input id="fee" type="number" min="0" max="5" step="0.1" value="1">
+    <p class="muted">Fee ini dibekukan saat launch dan tidak bisa diubah lagi.
+    Dibagi 50/50: separuh untukmu sebagai kreator, separuh untuk platform. 0% = token tanpa fee.</p>
+    <button id="connect">1. Hubungkan Wallet</button>
+    <button id="launch" disabled>2. Launch Token</button>
+    <p id="status" class="muted"></p>
+  </div>
+</main>
+<script>
+let signer = null, account = null;
+(async () => {
+  await loadDeployment();
+  if (deploymentNotice(document.getElementById("notice"))) {
+    document.getElementById("connect").disabled = true;
+  }
+})();
+document.getElementById("connect").onclick = async () => {
+  const status = document.getElementById("status");
+  try {
+    ({ signer, account } = await connectWallet());
+    status.textContent = "Wallet terhubung: " + account;
+    document.getElementById("launch").disabled = false;
+  } catch (e) { status.textContent = "Gagal: " + e.message; }
+};
+document.getElementById("launch").onclick = async () => {
+  const status = document.getElementById("status");
+  const name = document.getElementById("name").value.trim();
+  const symbol = document.getElementById("symbol").value.trim().toUpperCase();
+  const uri = document.getElementById("uri").value.trim();
+  const feePercent = parseFloat(document.getElementById("fee").value);
+  if (!name || !symbol) { status.textContent = "Nama dan ticker wajib diisi."; return; }
+  if (isNaN(feePercent) || feePercent < 0 || feePercent > 5) {
+    status.textContent = "Fee trade harus antara 0% dan 5%."; return;
+  }
+  const feeBps = Math.round(feePercent * 100);
+  try {
+    const factory = getWriteFactory(signer);
+    status.textContent = "Menunggu tanda tangan wallet…";
+    const tx = await factory.createToken(name, symbol, uri, feeBps);
+    status.textContent = "Transaksi terkirim: " + tx.hash + " — menunggu konfirmasi…";
+    const receipt = await tx.wait();
+    const count = Number(await getReadFactory().tokenCount());
+    const addr = await getReadFactory().allTokens(count - 1);
+    status.innerHTML = 'Token live: <span class="mono">' + addr + '</span> · <a href="token.html?address=' + addr + '">Buka detail</a>';
+  } catch (e) { status.textContent = "Gagal: " + (e.shortMessage || e.message); }
+};
+</script>
+</body>
+</html>
