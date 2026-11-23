@@ -243,8 +243,7 @@
     const cfg = PADHAUS_CHAINS[chainId];
     if (!cfg) return "";
     const badges =
-      (cfg.testnet ? ' <span class="badge">Prototype</span>' : "") +
-      (!cfg.factoryAddress ? ' <span class="badge badge-muted">Not deployed yet</span>' : "");
+      (cfg.testnet ? ' <span class="badge">Prototype</span>' : "");
     return `<section class="chain-group">
       <h3 class="group-title">${esc(cfg.name)} <span class="muted">· chain ${cfg.chainId}</span>${badges}</h3>
       <div data-group-body="${cfg.chainId}"><p class="muted">Loading…</p></div>
