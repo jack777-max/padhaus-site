@@ -308,7 +308,7 @@ async function connectWallet() {
 
 function getWriteFactory(signer) {
   const addr = factoryAddress();
-  if (!addr) throw new Error("Factory is not deployed yet on " + getChain().name + ".");
+  if (!addr) throw new Error("Padhaus is not live yet on " + getChain().name + ".");
   return new ethers.Contract(addr, FACTORY_ABI, signer);
 }
 
@@ -329,7 +329,7 @@ function banner(el, msg, isError = false) {
 function deploymentNotice(el) {
   if (!isDeployed()) {
     const cfg = getChain();
-    banner(el, "Padhaus is not deployed yet on " + cfg.name + " (chain " + cfg.chainId + ") — " +
+    banner(el, "Padhaus is not live yet on " + cfg.name + " (chain " + cfg.chainId + ") — " +
       "this network is a preset only. The token list and launch/trade actions are disabled for this chain.", true);
     return true;
   }
@@ -340,7 +340,7 @@ function deploymentNotice(el) {
 
 function chainBadgeText() {
   const cfg = getChain();
-  if (!isDeployed()) return cfg.name + " · chain " + cfg.chainId + " — not deployed yet";
+  if (!isDeployed()) return cfg.name + " · chain " + cfg.chainId + " — Padhaus not live yet";
   return (cfg.testnet ? "Prototype — " : "") + cfg.name + " · chain " + cfg.chainId;
 }
 
@@ -374,7 +374,7 @@ function initChainUI() {
       if (!cfg) continue;
       const opt = document.createElement("option");
       opt.value = String(id);
-      opt.textContent = cfg.name + (cfg.factoryAddress ? "" : " (not deployed yet)");
+      opt.textContent = cfg.name + (cfg.factoryAddress ? "" : " (Padhaus not live yet)");
       select.appendChild(opt);
     }
     select.value = String(activeChainId);
