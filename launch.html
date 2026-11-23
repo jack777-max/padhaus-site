@@ -6,6 +6,7 @@
 <title>Padhaus — Launch Token</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="chains.js"></script>
 <script src="app.js"></script>
 </head>
 <body>
@@ -15,13 +16,16 @@
     <a href="index.html">Daftar Token</a>
     <a href="launch.html">Launch Token</a>
   </nav>
-  <span class="muted" style="margin-left:auto">BSC Testnet · chain 97 · PROTOTIPE</span>
+  <div class="header-right">
+    <select id="chainSwitcher" class="chain-switcher" aria-label="Jaringan"></select>
+    <span class="muted chain-badge">BSC Testnet · chain 97 · PROTOTIPE</span>
+  </div>
 </header>
 <main>
   <div id="notice" class="banner"></div>
   <h2>Launch token baru</h2>
   <p class="muted">Supply tetap 1 miliar, tanpa mint lanjutan, tanpa tax. Token langsung
-  diperdagangkan di bonding curve. Butuh wallet (MetaMask) di BSC Testnet + sedikit tBNB untuk gas.</p>
+  diperdagangkan di bonding curve. Butuh wallet (MetaMask) di <span data-chain-name>BSC Testnet</span> + sedikit <span data-native-symbol>tBNB</span> untuk gas.</p>
   <div class="card">
     <label>Nama token</label>
     <input id="name" placeholder="mis. Koin Uji">
@@ -73,7 +77,7 @@ document.getElementById("launch").onclick = async () => {
     const receipt = await tx.wait();
     const count = Number(await getReadFactory().tokenCount());
     const addr = await getReadFactory().allTokens(count - 1);
-    status.innerHTML = 'Token live: <span class="mono">' + addr + '</span> · <a href="token.html?address=' + addr + '">Buka detail</a>';
+    status.innerHTML = 'Token live: <span class="mono">' + addr + '</span> · <a href="token.html?address=' + addr + '&chain=' + getActiveChainId() + '">Buka detail</a>';
   } catch (e) { status.textContent = "Gagal: " + (e.shortMessage || e.message); }
 };
 </script>

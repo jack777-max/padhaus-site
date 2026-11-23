@@ -7,6 +7,7 @@
 <meta name="description" content="Padhaus is a fair-launch launchpad: launching is free, creators set their own trade fee, and fees are frozen per token at launch.">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="chains.js"></script>
 <script src="app.js"></script>
 </head>
 <body>
@@ -16,11 +17,14 @@
     <a href="index.html">Tokens</a>
     <a href="launch.html">Launch Token</a>
   </nav>
-  <span class="badge" style="margin-left:auto">Prototype — BSC Testnet · chain 97</span>
+  <div class="header-right">
+    <select id="chainSwitcher" class="chain-switcher" aria-label="Network"></select>
+    <span class="badge chain-badge">Prototype — BSC Testnet · chain 97</span>
+  </div>
 </header>
 <main>
   <section class="hero">
-    <span class="badge badge-hero">Prototype — BSC Testnet</span>
+    <span class="badge badge-hero" data-chain-hero>Prototype — BSC Testnet</span>
     <h1>Launch fair.<br>Trade fair.</h1>
     <p class="hero-sub">Padhaus is a fair-launch launchpad with no gatekeepers and no surprises.
     Anyone can launch a token on a transparent bonding curve — and the rules you launch with
@@ -51,17 +55,18 @@
         to a DEX liquidity pool. A flat 2% graduation fee applies only at that moment.</p>
       </div>
     </div>
-    <p class="muted hero-note">This site is a public testnet prototype. Everything here runs on BSC Testnet —
-    the tokens are test tokens with no real-world value.</p>
+    <p class="muted hero-note">This site is a public prototype. The default network is BSC Testnet —
+    testnet tokens have no real-world value. Other networks can be picked in the network
+    switcher above; networks marked "not deployed yet" are presets only.</p>
   </section>
 
   <div id="notice" class="banner"></div>
   <h2 id="tokens">Tokens launched</h2>
-  <p class="muted">Read live from the factory contract on BSC Testnet. Click a token for details and trading.</p>
+  <p class="muted">Read live from the factory contract on <span data-chain-name>BSC Testnet</span>. Click a token for details and trading.</p>
   <div id="list"><p class="muted">Loading…</p></div>
 </main>
 <footer>
-  <span class="muted">Padhaus — fair-launch launchpad · Prototype on BSC Testnet (chain 97). Testnet tokens have no real-world value.</span>
+  <span class="muted">Padhaus — fair-launch launchpad · <span class="chain-badge">Prototype — BSC Testnet · chain 97</span>. Testnet tokens have no real-world value.</span>
 </footer>
 <script>
 (async () => {
@@ -69,7 +74,7 @@
   try {
     await loadDeployment();
     if (deploymentNotice(document.getElementById("notice"))) {
-      listEl.innerHTML = '<p class="muted">No data yet — the factory contract is not deployed on testnet.</p>';
+      listEl.innerHTML = '<p class="muted">No data — Padhaus is not deployed yet on ' + getChain().name + '.</p>';
       return;
     }
     const factory = getReadFactory();
@@ -88,8 +93,8 @@
       html += `<div class="card">
         <h3>${name} <span class="muted">($${symbol})</span></h3>
         <div class="mono">${addr}</div>
-        <p class="muted">Spot price: ${fmt(price)} tBNB · Sold from curve: ${fmt(curve.tokensSold)} · ${curve.graduated ? "GRADUATED" : "On bonding curve"}</p>
-        <a href="token.html?address=${addr}"><button class="secondary">Details / Trade</button></a>
+        <p class="muted">Spot price: ${fmt(price)} ${nativeSymbol()} · Sold from curve: ${fmt(curve.tokensSold)} · ${curve.graduated ? "GRADUATED" : "On bonding curve"}</p>
+        <a href="token.html?address=${addr}&chain=${getActiveChainId()}"><button class="secondary">Details / Trade</button></a>
       </div>`;
     }
     listEl.innerHTML = html;

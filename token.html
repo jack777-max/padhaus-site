@@ -6,6 +6,7 @@
 <title>Padhaus — Detail Token</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="chains.js"></script>
 <script src="app.js"></script>
 </head>
 <body>
@@ -15,7 +16,10 @@
     <a href="index.html">Daftar Token</a>
     <a href="launch.html">Launch Token</a>
   </nav>
-  <span class="muted" style="margin-left:auto">BSC Testnet · chain 97 · PROTOTIPE</span>
+  <div class="header-right">
+    <select id="chainSwitcher" class="chain-switcher" aria-label="Jaringan"></select>
+    <span class="muted chain-badge">BSC Testnet · chain 97 · PROTOTIPE</span>
+  </div>
 </header>
 <main>
   <div id="notice" class="banner"></div>
@@ -35,7 +39,7 @@
   <div class="grid">
     <div class="card">
       <h3>Beli</h3>
-      <label>Jumlah tBNB</label>
+      <label>Jumlah <span data-native-symbol>tBNB</span></label>
       <input id="buyAmount" type="number" step="any" min="0" placeholder="0.05">
       <p class="muted" id="buyQuote">Estimasi: —</p>
       <button id="buyBtn" disabled>Beli</button>
@@ -63,8 +67,8 @@ async function refresh() {
   ]);
   document.getElementById("title").textContent = name + " ($" + symbol + ")";
   document.getElementById("addr").textContent = tokenAddr;
-  document.getElementById("price").textContent = fmt(price) + " tBNB / token";
-  document.getElementById("realQuote").textContent = fmt(curve.realQuote) + " tBNB";
+  document.getElementById("price").textContent = fmt(price) + " " + nativeSymbol() + " / token";
+  document.getElementById("realQuote").textContent = fmt(curve.realQuote) + " " + nativeSymbol();
   document.getElementById("sold").textContent = fmt(curve.tokensSold) + " token";
   document.getElementById("grad").textContent = curve.graduated ? "Sudah graduasi (kurva berhenti)" : "Di bonding curve";
   document.getElementById("creator").textContent = curve.creator;
@@ -81,11 +85,11 @@ async function updateQuotes() {
   try {
     if (b && Number(b) > 0) {
       const [out, fee] = await factory.quoteBuy(tokenAddr, ethers.parseEther(b));
-      document.getElementById("buyQuote").textContent = "Estimasi terima: " + fmt(out) + " token (fee " + fmt(fee) + " tBNB)";
+      document.getElementById("buyQuote").textContent = "Estimasi terima: " + fmt(out) + " token (fee " + fmt(fee) + " " + nativeSymbol() + ")";
     }
     if (s && Number(s) > 0) {
       const [net, fee] = await factory.quoteSell(tokenAddr, ethers.parseEther(s));
-      document.getElementById("sellQuote").textContent = "Estimasi terima: " + fmt(net) + " tBNB (fee " + fmt(fee) + " tBNB)";
+      document.getElementById("sellQuote").textContent = "Estimasi terima: " + fmt(net) + " " + nativeSymbol() + " (fee " + fmt(fee) + " " + nativeSymbol() + ")";
     }
   } catch (_) { /* abaikan saat input tidak valid */ }
 }
