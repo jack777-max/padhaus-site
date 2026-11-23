@@ -329,8 +329,8 @@ function banner(el, msg, isError = false) {
 function deploymentNotice(el) {
   if (!isDeployed()) {
     const cfg = getChain();
-    banner(el, "Padhaus is not live yet on " + cfg.name + " (chain " + cfg.chainId + ") — " +
-      "this network is a preset only. The token list and launch/trade actions are disabled for this chain.", true);
+    banner(el, cfg.name + " — coming soon. Padhaus is on its way to this network; " +
+      "browsing only for now, launch and trade actions are disabled here.", true);
     return true;
   }
   return false;
@@ -340,7 +340,7 @@ function deploymentNotice(el) {
 
 function chainBadgeText() {
   const cfg = getChain();
-  if (!isDeployed()) return cfg.name + " · chain " + cfg.chainId + " — Padhaus not live yet";
+  if (!isDeployed()) return cfg.name + " · chain " + cfg.chainId;
   return (cfg.testnet ? "Prototype — " : "") + cfg.name + " · chain " + cfg.chainId;
 }
 
@@ -374,7 +374,7 @@ function initChainUI() {
       if (!cfg) continue;
       const opt = document.createElement("option");
       opt.value = String(id);
-      opt.textContent = cfg.name + (cfg.factoryAddress ? "" : " (Padhaus not live yet)");
+      opt.textContent = cfg.name;
       select.appendChild(opt);
     }
     select.value = String(activeChainId);

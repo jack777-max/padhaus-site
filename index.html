@@ -57,7 +57,7 @@
     </div>
     <p class="muted hero-note">This site is a public prototype. BSC Testnet is the only live
     network — testnet tokens have no real-world value. Tokens are listed below grouped by
-    network; networks marked "Padhaus not live yet" are presets only.</p>
+    network; some networks are coming soon.</p>
   </section>
 
   <div id="notice" class="banner"></div>
@@ -201,7 +201,7 @@
     // No factory on this chain: muted placeholder state, and no RPC calls
     // are attempted at all (this also covers Zero, whose rpcUrl is null).
     if (!factoryAddressFor(chainId)) {
-      body.innerHTML = '<p class="muted">Not deployed yet — Padhaus contracts are not live on this network, so there are no tokens to show.</p>';
+      body.innerHTML = '<p class="muted">Coming soon — no tokens on this network yet.</p>';
       return;
     }
     const g = { cfg, tokens: [], threshold: 0n };
