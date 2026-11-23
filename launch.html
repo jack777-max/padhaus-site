@@ -31,7 +31,15 @@
     <input id="name" placeholder="e.g. Test Coin">
     <label>Ticker / symbol</label>
     <input id="symbol" placeholder="e.g. KUJI">
-    <label>Metadata URI (description/image, optional)</label>
+    <label>Token image (optional)</label>
+    <input id="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+    <div id="imagePreviewWrap" class="image-preview" style="display:none">
+      <img id="imagePreview" class="token-logo" alt="Token image preview">
+    </div>
+    <p id="imageNote" class="muted"></p>
+    <label>Description (optional — stored in the token metadata when an image is uploaded)</label>
+    <input id="description" placeholder="One line about your token">
+    <label>Metadata URI (optional — not used when an image is uploaded)</label>
     <input id="uri" placeholder="ipfs://…">
     <label>Trade fee (%) — your choice, 0–5%</label>
     <input id="fee" type="number" min="0" max="5" step="0.1" value="1">
@@ -44,12 +52,41 @@
 </main>
 <script>
 let signer = null, account = null;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+let imageFile = null;
 (async () => {
   await loadDeployment();
   if (deploymentNotice(document.getElementById("notice"))) {
     document.getElementById("connect").disabled = true;
   }
+  if (!uploadConfigured()) {
+    document.getElementById("image").disabled = true;
+    document.getElementById("imageNote").textContent =
+      "Image upload is not configured yet — you can still launch without an image.";
+  }
 })();
+document.getElementById("image").onchange = (ev) => {
+  const status = document.getElementById("status");
+  const wrap = document.getElementById("imagePreviewWrap");
+  const file = ev.target.files && ev.target.files[0];
+  imageFile = null;
+  wrap.style.display = "none";
+  if (!file) return;
+  if (!IMAGE_TYPES.includes(file.type)) {
+    status.textContent = "Image must be a PNG, JPEG, WebP or GIF file.";
+    ev.target.value = "";
+    return;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    status.textContent = "Image must be 5 MB or smaller.";
+    ev.target.value = "";
+    return;
+  }
+  imageFile = file;
+  document.getElementById("imagePreview").src = URL.createObjectURL(file);
+  wrap.style.display = "block";
+};
 document.getElementById("connect").onclick = async () => {
   const status = document.getElementById("status");
   try {
@@ -70,9 +107,20 @@ document.getElementById("launch").onclick = async () => {
   }
   const feeBps = Math.round(feePercent * 100);
   try {
+    let finalUri = uri;
+    if (imageFile) {
+      // Upload image + metadata first; any failure throws and aborts the
+      // launch (handled by the catch below) — never submit a broken URI.
+      status.textContent = "Uploading image and metadata…";
+      finalUri = await buildImageMetadataURI({
+        name, symbol,
+        description: document.getElementById("description").value.trim(),
+        imageFile
+      });
+    }
     const factory = getWriteFactory(signer);
     status.textContent = "Waiting for wallet signature…";
-    const tx = await factory.createToken(name, symbol, uri, feeBps);
+    const tx = await factory.createToken(name, symbol, finalUri, feeBps);
     status.textContent = "Transaction sent: " + tx.hash + " — waiting for confirmation…";
     const receipt = await tx.wait();
     const count = Number(await getReadFactory().tokenCount());

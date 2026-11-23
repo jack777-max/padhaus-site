@@ -307,6 +307,51 @@ function tokenLogoPlaceholderHtml(symbol) {
   return '<span class="token-logo token-logo-placeholder">' + esc(letter) + "</span>";
 }
 
+/* ---------- Token image upload (relay) ----------
+ * The front end never talks to Pinata directly (that would expose the
+ * API key). Instead it POSTs files to a tiny serverless relay (see the
+ * upload-relay/ folder in the project root) which pins them to IPFS and
+ * returns { cid }. Set PADHAUS_UPLOAD_ENDPOINT to the deployed relay URL
+ * including the /api/pin path, e.g.
+ *   "https://padhaus-upload.vercel.app/api/pin"
+ * While it is empty, image upload is disabled in the launch form and
+ * launching without an image works exactly as before. */
+const PADHAUS_UPLOAD_ENDPOINT = "";
+
+function uploadConfigured() { return !!PADHAUS_UPLOAD_ENDPOINT; }
+
+/* POSTs one file (File or Blob) to the relay and resolves with its IPFS
+ * CID. Throws an Error with a user-readable message on any failure. */
+async function uploadFileToRelay(file, filename) {
+  if (!uploadConfigured()) throw new Error("Image upload is not configured yet.");
+  const form = new FormData();
+  form.append("file", file, filename || file.name || "upload");
+  let res;
+  try {
+    res = await fetch(PADHAUS_UPLOAD_ENDPOINT, { method: "POST", body: form });
+  } catch (_) {
+    throw new Error("Could not reach the upload service. Launch aborted — please try again.");
+  }
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* non-JSON error body */ }
+  if (!res.ok || !data || !data.cid) {
+    throw new Error((data && data.error) || ("Upload failed (HTTP " + res.status + "). Launch aborted."));
+  }
+  return data.cid;
+}
+
+/* Uploads the chosen token image, then a metadata JSON of the shape
+ * { name, symbol, description, image: "ipfs://<imageCid>" }, and returns
+ * the metadata's ipfs:// URI for createToken. Throws on any failure —
+ * the caller must abort the launch rather than submit a broken URI. */
+async function buildImageMetadataURI({ name, symbol, description, imageFile }) {
+  const imageCid = await uploadFileToRelay(imageFile);
+  const metadata = { name, symbol, description: description || "", image: "ipfs://" + imageCid };
+  const blob = new Blob([JSON.stringify(metadata)], { type: "application/json" });
+  const metadataCid = await uploadFileToRelay(blob, "metadata.json");
+  return "ipfs://" + metadataCid;
+}
+
 /* ---------- Discovery: factory event scanning ----------
  * Scans TokenCreated / Buy / Sell logs from the active chain's RPC in
  * 2000-block chunks, starting at the factory deployment block when it is

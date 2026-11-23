@@ -90,3 +90,7 @@ a { color: var(--accent); }
 .progress { height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin: .4rem 0 .2rem; }
 .progress-fill { height: 100%; background: var(--accent); border-radius: 999px; }
 .scan-note { margin-top: -.4rem; }
+
+/* ---------- launch form (image upload) ---------- */
+.image-preview { margin: .1rem 0 .8rem; }
+.image-preview .token-logo { width: 64px; height: 64px; }
