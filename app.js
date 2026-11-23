@@ -83,6 +83,7 @@ async function loadDeployment() {
 }
 
 function getReadProvider() {
+  if (!getChain().rpcUrl) return null; // chain belum punya RPC publik (mis. Zero sebelum mainnet)
   if (!readProvider || readProviderChainId !== activeChainId) {
     readProvider = new ethers.JsonRpcProvider(getChain().rpcUrl);
     readProviderChainId = activeChainId;

@@ -9,7 +9,8 @@
  *
  *   chainId        number        ID jaringan EVM.
  *   name           string        Nama tampil (dropdown, badge, wallet).
- *   rpcUrl         string        RPC publik untuk baca on-chain.
+ *   rpcUrl         string|null   RPC publik untuk baca on-chain.
+ *                                null = RPC publik belum tersedia.
  *   factoryAddress string|null   Alamat LaunchpadFactory di chain ini.
  *                                null = BELUM terdeploy: UI menandai
  *                                "not deployed yet" dan menonaktifkan
@@ -73,6 +74,21 @@ const PADHAUS_CHAINS = {
     explorerUrl: "https://etherscan.io",
     testnet: false
   },
+  // Preset — belum terdeploy (factoryAddress null). Chain BELUM mainnet:
+  // Zero (LayerZero) launch mainnet 30 Nov 2026 (chainId 33002, gas ZRO);
+  // per 23 Nov 2026 belum ada RPC/explorer publik, jadi rpcUrl null.
+  // Pantauan zero-chain-watch melaporkan parameter resmi begitu terbit,
+  // lalu entri ini diisi. Router graduasi TODO-VERIFY (chains/zero.json).
+  33002: {
+    chainId: 33002,
+    name: "Zero (LayerZero)",
+    rpcUrl: null,
+    factoryAddress: null,
+    nativeSymbol: "ZRO",
+    nativeName: "ZRO",
+    explorerUrl: null,
+    testnet: false
+  },
   // Preset — belum terdeploy (factoryAddress null). Router graduasi untuk
   // chain ini masih TODO-VERIFY (lihat chains/base.json).
   8453: {
@@ -88,7 +104,7 @@ const PADHAUS_CHAINS = {
 };
 
 /* Urutan tampil di dropdown pemilih jaringan (chain default pertama). */
-const PADHAUS_CHAIN_ORDER = [97, 4663, 56, 8453, 1];
+const PADHAUS_CHAIN_ORDER = [97, 4663, 56, 8453, 1, 33002];
 
 /* Chain aktif bila pengguna belum pernah memilih. */
 const PADHAUS_DEFAULT_CHAIN_ID = 97;
