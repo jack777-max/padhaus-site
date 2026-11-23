@@ -2,7 +2,8 @@
  * Network configuration lives in chains.js (PADHAUS_CHAINS): chainId ->
  * { name, rpcUrl, factoryAddress, nativeSymbol, explorerUrl, testnet }.
  * Reads go through the active chain's public RPC; writes go through the
- * browser wallet (MetaMask), pointed at the active chain.
+ * connected wallet (a browser wallet extension, or a mobile wallet via
+ * WalletConnect), pointed at the active chain.
  * The active chain is picked in the #chainSwitcher dropdown in the header,
  * stored in localStorage, and can be forced with the URL parameter
  * ?chain=<chainId>.
@@ -119,40 +120,190 @@ function getReadTokenFor(tokenAddr, chainId) {
 
 function getReadToken(tokenAddr) { return getReadTokenFor(tokenAddr, activeChainId); }
 
-/* Ask the wallet to switch to a given chain; if the wallet does not know
- * the chain yet, offer to add it from the chains.js configuration. */
-async function ensureWalletChain(chainId) {
+/* Ask a wallet to switch to a given chain; if the wallet does not know
+ * the chain yet, offer to add it from the chains.js configuration. Works
+ * over any EIP-1193 provider: the injected browser wallet or a
+ * WalletConnect session. */
+async function ensureWalletChainOn(eip1193, chainId) {
   const cfg = getChain(chainId);
   const hexId = "0x" + chainId.toString(16);
   try {
-    await window.ethereum.request({
+    await eip1193.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: hexId }]
     });
   } catch (e) {
-    if (e.code === 4902) {
+    // 4902 = the wallet does not know the chain yet. Some WalletConnect
+    // wallets report the same situation as a plain error message instead.
+    if (e.code === 4902 || (e.message && /unrecognized|not added|unknown chain/i.test(e.message))) {
       const params = {
         chainId: hexId,
         chainName: cfg.name,
         nativeCurrency: { name: cfg.nativeName, symbol: cfg.nativeSymbol, decimals: 18 },
-        rpcUrls: [cfg.rpcUrl]
+        rpcUrls: cfg.rpcUrl ? [cfg.rpcUrl] : []
       };
       if (cfg.explorerUrl) params.blockExplorerUrls = [cfg.explorerUrl];
-      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [params] });
+      await eip1193.request({ method: "wallet_addEthereumChain", params: [params] });
     } else { throw e; }
   }
 }
 
-async function connectWallet() {
-  if (!window.ethereum) throw new Error("Browser wallet (MetaMask) not found.");
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.send("eth_requestAccounts", []);
+/* Backwards-compatible wrapper: switch the injected browser wallet. */
+async function ensureWalletChain(chainId) {
+  return ensureWalletChainOn(window.ethereum, chainId);
+}
+
+/* ---------- Wallet connections ----------
+ * Two ways in, one ethers flow out:
+ *  - "injected": a browser wallet extension (MetaMask, Bitget, …) via
+ *    window.ethereum.
+ *  - "walletconnect": a WalletConnect session (QR code / mobile app
+ *    deep links) via @walletconnect/ethereum-provider, lazy-loaded from
+ *    CDN — the same integration (and project ID) as pogent.fun.
+ * connectWallet() shows a small chooser when both are available and
+ * goes straight to WalletConnect when no browser wallet is injected.
+ * Both paths end in an ethers BrowserProvider over the EIP-1193
+ * provider, pointed at the active chain from chains.js. */
+
+const WC_PROJECT_ID = "741d580534af7268f886b3f563440286";
+const WC_SCRIPT_URL = "https://cdn.jsdelivr.net/npm/@walletconnect/ethereum-provider@2.21.7/dist/index.umd.min.js";
+
+let wcProvider = null;        // WalletConnect provider instance (once initialized)
+let wcScriptPromise = null;   // lazy CDN script load
+let activeEip1193 = null;     // EIP-1193 provider backing the live connection
+let activeWalletKind = null;  // "injected" | "walletconnect"
+
+function wcCtor() {
+  const ns = window["@walletconnect/ethereum-provider"];
+  return ns && ns.EthereumProvider ? ns.EthereumProvider : null;
+}
+
+function loadWCScript() {
+  if (wcCtor()) return Promise.resolve();
+  if (wcScriptPromise) return wcScriptPromise;
+  wcScriptPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = WC_SCRIPT_URL; s.async = true;
+    s.onload = () => { wcCtor() ? resolve() : reject(new Error("WalletConnect failed to load.")); };
+    s.onerror = () => reject(new Error("WalletConnect failed to load."));
+    document.head.appendChild(s);
+  });
+  return wcScriptPromise;
+}
+
+/* Initialize the WalletConnect provider once. Every chain in the
+ * registry is requested up front (the active chain as the primary, the
+ * rest as optional) so the header chain switcher can move the session
+ * between networks later without a fresh pairing. */
+async function getWCProvider() {
+  if (wcProvider) return wcProvider;
+  await loadWCScript();
+  const rpcMap = {};
+  for (const id of PADHAUS_CHAIN_ORDER) {
+    const cfg = PADHAUS_CHAINS[id];
+    if (cfg && cfg.rpcUrl) rpcMap[id] = cfg.rpcUrl;
+  }
+  const optionalChains = PADHAUS_CHAIN_ORDER.filter((id) => id !== activeChainId);
+  wcProvider = await wcCtor().init({
+    projectId: WC_PROJECT_ID,
+    chains: [activeChainId],
+    optionalChains,
+    showQrModal: true,
+    rpcMap,
+    metadata: {
+      name: "Padhaus",
+      description: "Padhaus — fair-launch launchpad.",
+      url: "https://padhaus.fun"
+    }
+  });
+  // Keep the app state in sync with the session: a disconnect (or an
+  // accountsChanged with no accounts left) ends the connection, and the
+  // pages reset on the "padhaus:disconnected" event — the same end state
+  // as a browser wallet going away.
+  wcProvider.on("accountsChanged", (accounts) => {
+    if (activeWalletKind !== "walletconnect") return;
+    if (!accounts || accounts.length === 0) clearActiveWallet(true);
+  });
+  wcProvider.on("chainChanged", () => { /* the ethers provider tracks the session chain itself */ });
+  wcProvider.on("disconnect", () => {
+    if (activeWalletKind === "walletconnect") clearActiveWallet(true);
+  });
+  return wcProvider;
+}
+
+function clearActiveWallet(notify) {
+  activeEip1193 = null;
+  activeWalletKind = null;
+  if (notify) window.dispatchEvent(new CustomEvent("padhaus:disconnected"));
+}
+
+/* Disconnect the live connection. A WalletConnect session is closed on
+ * the provider itself; an injected browser wallet cannot be disconnected
+ * programmatically, so there we just forget the connection locally.
+ * Pages reset their UI on the "padhaus:disconnected" event. */
+async function disconnectWallet() {
+  if (activeWalletKind === "walletconnect" && wcProvider) {
+    try { await wcProvider.disconnect(); } catch (_) { /* session already gone */ }
+  }
+  clearActiveWallet(true);
+}
+
+/* The connect chooser: resolves "injected", "walletconnect", or null
+ * when the user cancels. Rendered from app.js so every page shares it. */
+function chooseConnectMethod() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "wallet-chooser-overlay";
+    overlay.innerHTML =
+      '<div class="wallet-chooser" role="dialog" aria-modal="true" aria-label="Connect wallet">' +
+        "<h3>Connect wallet</h3>" +
+        '<button type="button" class="wallet-choice" data-method="injected">Browser wallet' +
+          "<span>MetaMask, Bitget and other wallet extensions</span></button>" +
+        '<button type="button" class="wallet-choice" data-method="walletconnect">WalletConnect' +
+          "<span>Scan a QR code or open a mobile wallet app</span></button>" +
+        '<button type="button" class="wallet-choice-cancel">Cancel</button>' +
+      "</div>";
+    document.body.appendChild(overlay);
+    const close = (value) => { overlay.remove(); resolve(value); };
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
+    overlay.querySelectorAll("[data-method]").forEach((btn) => {
+      btn.addEventListener("click", () => close(btn.getAttribute("data-method")));
+    });
+    overlay.querySelector(".wallet-choice-cancel").addEventListener("click", () => close(null));
+  });
+}
+
+/* Shared tail of both connect paths: wrap the EIP-1193 provider in an
+ * ethers BrowserProvider and point the wallet at the active chain. */
+async function finishConnect(eip1193, kind) {
+  const provider = new ethers.BrowserProvider(eip1193);
   const network = await provider.getNetwork();
   if (Number(network.chainId) !== activeChainId) {
-    await ensureWalletChain(activeChainId);
+    await ensureWalletChainOn(eip1193, activeChainId);
   }
   const signer = await provider.getSigner();
+  activeEip1193 = eip1193;
+  activeWalletKind = kind;
   return { provider, signer, account: await signer.getAddress() };
+}
+
+async function connectInjectedWallet() {
+  if (!window.ethereum) throw new Error("Browser wallet (MetaMask) not found.");
+  await window.ethereum.request({ method: "eth_requestAccounts" });
+  return finishConnect(window.ethereum, "injected");
+}
+
+async function connectWalletConnect() {
+  const wc = await getWCProvider();
+  await wc.connect(); // opens the QR / mobile-app chooser modal
+  return finishConnect(wc, "walletconnect");
+}
+
+async function connectWallet() {
+  if (!window.ethereum) return connectWalletConnect();
+  const method = await chooseConnectMethod();
+  if (!method) throw new Error("Connection cancelled.");
+  return method === "walletconnect" ? connectWalletConnect() : connectInjectedWallet();
 }
 
 function getWriteFactory(signer) {
@@ -196,7 +347,10 @@ function chainBadgeText() {
 async function onChainSelected(newChainId) {
   try { localStorage.setItem("padhaus.chainId", String(newChainId)); } catch (_) { /* ignore */ }
   // If a wallet is already connected, ask it to switch networks too.
-  if (window.ethereum) {
+  if (activeWalletKind === "walletconnect" && wcProvider) {
+    try { await ensureWalletChainOn(wcProvider, newChainId); }
+    catch (_) { /* a silent wallet rejection is not fatal; connectWallet() will retry the request */ }
+  } else if (window.ethereum) {
     try {
       const accounts = await window.ethereum.request({ method: "eth_accounts" });
       if (accounts && accounts.length > 0) await ensureWalletChain(newChainId);

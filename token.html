@@ -41,7 +41,7 @@
       <tr><th>Creator</th><td id="creator" class="mono">—</td></tr>
       <tr><th>My token balance</th><td id="myBal">— (connect wallet)</td></tr>
     </table>
-    <p><button id="connect" class="secondary">Connect Wallet</button> <span id="acct" class="muted"></span></p>
+    <p><button id="connect" class="secondary">Connect Wallet</button> <button id="disconnect" class="secondary" style="display:none">Disconnect</button> <span id="acct" class="muted"></span></p>
   </div>
   <div class="grid">
     <div class="card">
@@ -128,11 +128,22 @@ document.getElementById("connect").onclick = async () => {
   try {
     ({ signer, account } = await connectWallet());
     document.getElementById("acct").textContent = account;
+    document.getElementById("disconnect").style.display = "";
     document.getElementById("buyBtn").disabled = false;
     document.getElementById("sellBtn").disabled = false;
     await refresh();
   } catch (e) { document.getElementById("status").textContent = "Failed: " + e.message; }
 };
+document.getElementById("disconnect").onclick = async () => { await disconnectWallet(); };
+window.addEventListener("padhaus:disconnected", () => {
+  signer = null; account = null;
+  document.getElementById("acct").textContent = "";
+  document.getElementById("disconnect").style.display = "none";
+  document.getElementById("buyBtn").disabled = true;
+  document.getElementById("sellBtn").disabled = true;
+  document.getElementById("myBal").textContent = "— (connect wallet)";
+  document.getElementById("status").textContent = "Wallet disconnected.";
+});
 document.getElementById("buyAmount").oninput = updateQuotes;
 document.getElementById("sellAmount").oninput = updateQuotes;
 

@@ -25,7 +25,8 @@
   <div id="notice" class="banner"></div>
   <h2>Launch a new token</h2>
   <p class="muted">Fixed supply of 1 billion, no further minting, no tax. The token trades
-  on a bonding curve right away. You need a wallet (MetaMask) on <span data-chain-name>BSC Testnet</span> + a little <span data-native-symbol>tBNB</span> for gas.</p>
+  on a bonding curve right away. You need a wallet — a browser extension like MetaMask or Bitget,
+  or a mobile wallet via WalletConnect — on <span data-chain-name>BSC Testnet</span> + a little <span data-native-symbol>tBNB</span> for gas.</p>
   <div class="card">
     <label>Token name</label>
     <input id="name" placeholder="e.g. Test Coin">
@@ -52,6 +53,7 @@
     <p class="muted">This fee is frozen at launch and can never be changed again.
     Split 50/50: half for you as the creator, half for the platform. 0% = a token with no fee.</p>
     <button id="connect">1. Connect Wallet</button>
+    <button id="disconnect" class="secondary" style="display:none">Disconnect</button>
     <button id="launch" disabled>2. Launch Token</button>
     <p id="status" class="muted"></p>
   </div>
@@ -104,9 +106,17 @@ document.getElementById("connect").onclick = async () => {
   try {
     ({ signer, account } = await connectWallet());
     status.textContent = "Wallet connected: " + account;
+    document.getElementById("disconnect").style.display = "";
     document.getElementById("launch").disabled = false;
   } catch (e) { status.textContent = "Failed: " + e.message; }
 };
+document.getElementById("disconnect").onclick = async () => { await disconnectWallet(); };
+window.addEventListener("padhaus:disconnected", () => {
+  signer = null; account = null;
+  document.getElementById("disconnect").style.display = "none";
+  document.getElementById("launch").disabled = true;
+  document.getElementById("status").textContent = "Wallet disconnected.";
+});
 document.getElementById("launch").onclick = async () => {
   const status = document.getElementById("status");
   const name = document.getElementById("name").value.trim();

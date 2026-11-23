@@ -91,6 +91,16 @@ a { color: var(--accent); }
 .progress-fill { height: 100%; background: var(--accent); border-radius: 999px; }
 .scan-note { margin-top: -.4rem; }
 
+/* ---------- wallet chooser ---------- */
+.wallet-chooser-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .62); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 1rem; }
+.wallet-chooser { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px; padding: 1.2rem; max-width: 360px; width: 100%; display: flex; flex-direction: column; gap: .6rem; }
+.wallet-chooser h3 { margin: 0 0 .3rem; }
+.wallet-choice { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); text-align: left; padding: .7rem .9rem; font-size: 1rem; }
+.wallet-choice span { display: block; font-weight: 400; font-size: .85rem; color: var(--muted); margin-top: .15rem; }
+.wallet-choice:hover:not(:disabled) { border-color: var(--accent); filter: none; }
+.wallet-choice-cancel { background: transparent; color: var(--muted); }
+.wallet-choice-cancel:hover:not(:disabled) { color: var(--text); filter: none; }
+
 /* ---------- launch form (image upload) ---------- */
 .image-preview { margin: .1rem 0 .8rem; }
 .image-preview .token-logo { width: 64px; height: 64px; }
