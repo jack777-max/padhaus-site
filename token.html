@@ -23,8 +23,14 @@
 </header>
 <main>
   <div id="notice" class="banner"></div>
-  <h2 id="title">Token details</h2>
-  <p class="mono" id="addr"></p>
+  <div class="card-head">
+    <div class="logo-slot" id="logoSlot"><span class="token-logo token-logo-placeholder">?</span></div>
+    <div class="card-title">
+      <h2 id="title">Token details</h2>
+      <p class="mono" id="addr"></p>
+    </div>
+  </div>
+  <p class="muted" id="description"></p>
   <div class="card">
     <table>
       <tr><th>Spot price</th><td id="price">—</td></tr>
@@ -75,6 +81,18 @@ async function refresh() {
   if (account) {
     document.getElementById("myBal").textContent = fmt(await token.balanceOf(account)) + " token";
   }
+  // Logo + description come from the token's metadataURI (IPFS); the
+  // on-chain name/symbol above stay authoritative if metadata is absent.
+  const logoSlot = document.getElementById("logoSlot");
+  logoSlot.innerHTML = tokenLogoPlaceholderHtml(symbol);
+  resolveTokenMetadata(tokenAddr, curve.metadataURI).then((meta) => {
+    if (!meta) return;
+    if (meta.image) {
+      logoSlot.innerHTML = '<img class="token-logo" src="' + esc(meta.image) + '" alt="" loading="lazy">';
+      logoSlot.querySelector("img").onerror = () => { logoSlot.innerHTML = tokenLogoPlaceholderHtml(symbol); };
+    }
+    if (meta.description) document.getElementById("description").textContent = meta.description;
+  }).catch(() => {});
   await updateQuotes();
 }
 

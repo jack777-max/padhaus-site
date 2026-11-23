@@ -70,3 +70,23 @@ td, th { text-align: left; padding: .45rem .4rem; border-bottom: 1px solid var(-
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
 a { color: var(--accent); }
+
+/* ---------- discovery (grouped token list) ---------- */
+.segmented { display: inline-flex; gap: .3rem; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: .3rem; margin: 0 0 .5rem; }
+.seg-btn { background: transparent; color: var(--muted); padding: .45rem 1rem; border-radius: 7px; }
+.seg-btn:hover:not(:disabled) { color: var(--text); filter: none; }
+.seg-btn.active { background: var(--accent); color: var(--accent-text); }
+.chain-group { margin-top: 1.75rem; }
+.group-title { margin: 0 0 .8rem; font-size: 1.15rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.badge-muted { border-color: var(--border-strong); color: var(--muted); }
+.badge-grad { background: rgba(240, 185, 11, .12); font-size: .68rem; padding: .12rem .55rem; vertical-align: middle; }
+.card-head { display: flex; gap: .9rem; align-items: flex-start; }
+.card-title { flex: 1; min-width: 0; }
+.card-title h3 { margin: 0 0 .2rem; }
+.card-age { white-space: nowrap; }
+.logo-slot { flex: 0 0 auto; }
+.token-logo { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; display: block; background: var(--surface-2); border: 1px solid var(--border-strong); }
+.token-logo-placeholder { display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.25rem; color: var(--accent); }
+.progress { height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin: .4rem 0 .2rem; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.scan-note { margin-top: -.4rem; }

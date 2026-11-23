@@ -55,52 +55,195 @@
         to a DEX liquidity pool. A flat 2% graduation fee applies only at that moment.</p>
       </div>
     </div>
-    <p class="muted hero-note">This site is a public prototype. The default network is BSC Testnet —
-    testnet tokens have no real-world value. Other networks can be picked in the network
-    switcher above; networks marked "not deployed yet" are presets only.</p>
+    <p class="muted hero-note">This site is a public prototype. BSC Testnet is the only live
+    network — testnet tokens have no real-world value. Tokens are listed below grouped by
+    network; networks marked "not deployed yet" are presets only.</p>
   </section>
 
   <div id="notice" class="banner"></div>
   <h2 id="tokens">Tokens launched</h2>
-  <p class="muted">Read live from the factory contract on <span data-chain-name>BSC Testnet</span>. Click a token for details and trading.</p>
-  <div id="list"><p class="muted">Loading…</p></div>
+  <p class="muted">Read live from the factory contract on each network, grouped by network. Click a token for details and trading.</p>
+  <div class="segmented" role="tablist" aria-label="Token discovery views">
+    <button type="button" class="seg-btn active" data-view="new">New</button>
+    <button type="button" class="seg-btn" data-view="active">Active</button>
+    <button type="button" class="seg-btn" data-view="volume">Top volume</button>
+  </div>
+  <div id="groups"></div>
 </main>
 <footer>
   <span class="muted">Padhaus — fair-launch launchpad · <span class="chain-badge">Prototype — BSC Testnet · chain 97</span>. Testnet tokens have no real-world value.</span>
 </footer>
 <script>
 (async () => {
-  const listEl = document.getElementById("list");
-  try {
-    await loadDeployment();
-    if (deploymentNotice(document.getElementById("notice"))) {
-      listEl.innerHTML = '<p class="muted">No data — Padhaus is not deployed yet on ' + getChain().name + '.</p>';
+  const groupsEl = document.getElementById("groups");
+  // Discovery is grouped by network and independent of the header chain
+  // switcher: one section per chain in PADHAUS_CHAIN_ORDER, each read from
+  // that chain's own RPC + factory. The New / Active / Top volume toggle
+  // is global and re-sorts inside every group.
+  const groups = new Map(); // chainId -> { cfg, tokens: [], threshold }
+  let view = "new";
+
+  document.querySelectorAll(".seg-btn").forEach((btn) => {
+    btn.onclick = () => {
+      view = btn.dataset.view;
+      document.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      for (const chainId of groups.keys()) renderGroup(chainId);
+    };
+  });
+
+  function groupBody(chainId) {
+    return groupsEl.querySelector('[data-group-body="' + chainId + '"]');
+  }
+
+  function progressPct(g, t) {
+    if (t.curve.graduated) return 100; // realQuote is zeroed at graduation
+    if (g.threshold <= 0n) return 0;
+    const pct = Number((t.curve.realQuote * 10000n) / g.threshold) / 100;
+    return Math.min(100, Math.max(0, pct));
+  }
+
+  function sortedGroupTokens(g) {
+    const arr = g.tokens.slice();
+    if (view === "new") {
+      // Most recently launched first; before the event scan lands, the
+      // launch index (allTokens order) is the fallback ordering key.
+      arr.sort((a, b) => ((b.createdBlock ?? -1) - (a.createdBlock ?? -1)) || (b.index - a.index));
+    } else if (view === "active") {
+      // Most trades in the scanned window first; ties go to latest activity.
+      arr.sort((a, b) => (b.trades - a.trades) || ((b.lastAt ?? 0) - (a.lastAt ?? 0)) || ((b.lastBlock ?? 0) - (a.lastBlock ?? 0)));
+    } else if (view === "volume") {
+      arr.sort((a, b) => (b.volumeWei > a.volumeWei ? 1 : b.volumeWei < a.volumeWei ? -1 : 0));
+    }
+    return arr;
+  }
+
+  function cardHtml(g, t) {
+    const sym = g.cfg.nativeSymbol;
+    const pct = progressPct(g, t);
+    const mcap = (t.price * t.supply) / (10n ** 18n); // spot price x total supply
+    return `<div class="card token-card">
+      <div class="card-head">
+        <div class="logo-slot" data-logo-slot="${t.addr}">${tokenLogoPlaceholderHtml(t.symbol)}</div>
+        <div class="card-title">
+          <h3>${esc(t.name)} <span class="muted">($${esc(t.symbol)})</span>${t.curve.graduated ? ' <span class="badge badge-grad">Graduated</span>' : ""}</h3>
+          <div class="mono">${t.addr}</div>
+        </div>
+        <span class="muted card-age">${t.createdAt ? timeAgo(t.createdAt) : "—"}</span>
+      </div>
+      <p class="muted">Spot price: ${fmt(t.price)} ${sym} · Market cap: ${fmt(mcap)} ${sym} · Sold from curve: ${fmt(t.curve.tokensSold)} · ${t.curve.graduated ? "GRADUATED" : "On bonding curve"}</p>
+      <div class="progress"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <p class="muted">Curve progress: ${pct.toFixed(1)}% · Volume: ${t.scanned ? fmt(t.volumeWei) + " " + sym : "—"} · Last activity: ${t.lastAt ? timeAgo(t.lastAt) : "—"}</p>
+      <a href="token.html?address=${t.addr}&chain=${g.cfg.chainId}"><button class="secondary">Details / Trade</button></a>
+    </div>`;
+  }
+
+  function renderGroup(chainId) {
+    const g = groups.get(chainId);
+    const body = groupBody(chainId);
+    if (!g || !body) return;
+    const list = body.querySelector(".group-list");
+    if (!list) return;
+    list.innerHTML = sortedGroupTokens(g).map((t) => cardHtml(g, t)).join("");
+    fillLogos(chainId);
+  }
+
+  function fillLogos(chainId) {
+    const g = groups.get(chainId);
+    const body = groupBody(chainId);
+    if (!g || !body) return;
+    for (const t of g.tokens) {
+      resolveTokenMetadata(t.addr, t.curve.metadataURI).then((meta) => {
+        if (!meta || !meta.image) return;
+        const slot = body.querySelector('[data-logo-slot="' + t.addr + '"]');
+        if (!slot) return;
+        slot.innerHTML = '<img class="token-logo" src="' + esc(meta.image) + '" alt="" loading="lazy">';
+        slot.querySelector("img").onerror = () => { slot.innerHTML = tokenLogoPlaceholderHtml(t.symbol); };
+      }).catch(() => {});
+    }
+  }
+
+  function applyScan(chainId, cache) {
+    const g = groups.get(chainId);
+    const body = groupBody(chainId);
+    if (!g || !body || !cache) return;
+    for (const t of g.tokens) {
+      const agg = cache.tokens[t.addr.toLowerCase()];
+      if (!agg) continue;
+      t.createdBlock = agg.createdBlock;
+      t.createdAt = agg.createdAt;
+      t.volumeWei = BigInt(agg.volumeWei || "0");
+      t.trades = agg.trades || 0;
+      t.lastBlock = agg.lastBlock;
+      t.lastAt = agg.lastAt;
+      t.scanned = true;
+    }
+    renderGroup(chainId);
+    const note = body.querySelector(".scan-note");
+    if (note) {
+      note.textContent = "Age, volume and activity come from factory events scanned in your browser (blocks " +
+        cache.startBlock + "–" + cache.lastBlock + ") and cached locally.";
+    }
+  }
+
+  async function loadGroup(chainId) {
+    const cfg = PADHAUS_CHAINS[chainId];
+    const body = groupBody(chainId);
+    if (!body) return;
+    // No factory on this chain: muted placeholder state, and no RPC calls
+    // are attempted at all (this also covers Zero, whose rpcUrl is null).
+    if (!factoryAddressFor(chainId)) {
+      body.innerHTML = '<p class="muted">Not deployed yet — Padhaus contracts are not live on this network, so there are no tokens to show.</p>';
       return;
     }
-    const factory = getReadFactory();
-    const count = Number(await factory.tokenCount());
-    if (count === 0) {
-      listEl.innerHTML = '<p class="muted">The factory is live, but no tokens yet. <a href="launch.html">Launch the first one</a>.</p>';
-      return;
+    const g = { cfg, tokens: [], threshold: 0n };
+    groups.set(chainId, g);
+    try {
+      const factory = getReadFactoryFor(chainId);
+      const count = Number(await factory.tokenCount());
+      if (count === 0) {
+        body.innerHTML = '<p class="muted">No tokens launched on this network yet. <a href="launch.html?chain=' + chainId + '">Launch the first one</a>.</p>';
+        return;
+      }
+      g.threshold = await factory.graduationThreshold();
+      for (let i = 0; i < count; i++) {
+        const addr = await factory.allTokens(i);
+        const token = getReadTokenFor(addr, chainId);
+        const [name, symbol, supply, price, curve] = await Promise.all([
+          token.name(), token.symbol(), token.totalSupply(), factory.spotPrice(addr), factory.getCurve(addr)
+        ]);
+        g.tokens.push({
+          index: i, addr, name, symbol, supply, price, curve,
+          createdBlock: null, createdAt: null, volumeWei: 0n, trades: 0,
+          lastBlock: null, lastAt: null, scanned: false
+        });
+      }
+      body.innerHTML = '<div class="group-list"></div><p class="muted scan-note"></p>';
+      renderGroup(chainId);
+      // The discovery scan runs only after this group's cards are on
+      // screen; if it fails or is slow, the cards keep "—" fields.
+      scanFactoryEventsFor(chainId, (cache) => applyScan(chainId, cache)).catch(() => {});
+    } catch (e) {
+      // Per-chain resilience: a failing RPC only marks its own group.
+      body.innerHTML = '<p class="muted">Could not load tokens for this network. Please try again later.</p>';
     }
-    let html = "";
-    for (let i = 0; i < count; i++) {
-      const addr = await factory.allTokens(i);
-      const token = getReadToken(addr);
-      const [name, symbol, price, curve] = await Promise.all([
-        token.name(), token.symbol(), factory.spotPrice(addr), factory.getCurve(addr)
-      ]);
-      html += `<div class="card">
-        <h3>${name} <span class="muted">($${symbol})</span></h3>
-        <div class="mono">${addr}</div>
-        <p class="muted">Spot price: ${fmt(price)} ${nativeSymbol()} · Sold from curve: ${fmt(curve.tokensSold)} · ${curve.graduated ? "GRADUATED" : "On bonding curve"}</p>
-        <a href="token.html?address=${addr}&chain=${getActiveChainId()}"><button class="secondary">Details / Trade</button></a>
-      </div>`;
-    }
-    listEl.innerHTML = html;
-  } catch (e) {
-    banner(document.getElementById("notice"), "Failed to load: " + e.message, true);
-    listEl.innerHTML = "";
+  }
+
+  await loadDeployment();
+  // Section skeleton, one per chain in registry order.
+  groupsEl.innerHTML = PADHAUS_CHAIN_ORDER.map((chainId) => {
+    const cfg = PADHAUS_CHAINS[chainId];
+    if (!cfg) return "";
+    const badges =
+      (cfg.testnet ? ' <span class="badge">Prototype</span>' : "") +
+      (!cfg.factoryAddress ? ' <span class="badge badge-muted">Not deployed yet</span>' : "");
+    return `<section class="chain-group">
+      <h3 class="group-title">${esc(cfg.name)} <span class="muted">· chain ${cfg.chainId}</span>${badges}</h3>
+      <div data-group-body="${cfg.chainId}"><p class="muted">Loading…</p></div>
+    </section>`;
+  }).join("");
+  // Load every group independently and concurrently.
+  for (const chainId of PADHAUS_CHAIN_ORDER) {
+    if (PADHAUS_CHAINS[chainId]) loadGroup(chainId);
   }
 })();
 </script>

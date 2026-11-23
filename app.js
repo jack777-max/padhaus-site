@@ -15,14 +15,20 @@
 const FACTORY_ABI = [
   "function tokenCount() view returns (uint256)",
   "function allTokens(uint256) view returns (address)",
-  "function getCurve(address) view returns (tuple(address creator, string metadataURI, uint256 virtualQuote, uint256 virtualToken, uint256 realQuote, uint256 tokensSold, bool graduated))",
+  "function getCurve(address) view returns (tuple(address creator, string metadataURI, uint256 virtualQuote, uint256 virtualToken, uint256 realQuote, uint256 tokensSold, bool graduated, uint256 feeBpsSnapshot, uint256 graduationFeeBpsSnapshot))",
   "function spotPrice(address) view returns (uint256)",
   "function quoteBuy(address, uint256) view returns (uint256 tokensOut, uint256 fee)",
   "function quoteSell(address, uint256) view returns (uint256 netOut, uint256 fee)",
   "function creatorFees(address) view returns (uint256)",
+  "function graduationThreshold() view returns (uint256)",
+  "function totalSupply() view returns (uint256)",
   "function createToken(string name_, string symbol_, string metadataURI, uint256 feeBps_) returns (address)",
   "function buy(address token, uint256 minTokensOut) payable",
-  "function sell(address token, uint256 tokenAmount, uint256 minQuoteOut)"
+  "function sell(address token, uint256 tokenAmount, uint256 minQuoteOut)",
+  "event TokenCreated(address indexed token, address indexed creator, string name, string symbol, string metadataURI)",
+  "event Buy(address indexed token, address indexed buyer, uint256 quoteInNet, uint256 fee, uint256 tokensOut)",
+  "event Sell(address indexed token, address indexed seller, uint256 tokensIn, uint256 quoteOutGross, uint256 fee, uint256 quoteOutNet)",
+  "event Graduated(address indexed token, uint256 quoteToLP, uint256 tokensToLP, uint256 liquidity, address lpTo)"
 ];
 const ERC20_ABI = [
   "function name() view returns (string)",
@@ -48,8 +54,7 @@ function resolveInitialChainId() {
 
 let activeChainId = resolveInitialChainId();
 let deployment = null; // contents of deployment-testnet.json (override for the matching chain only)
-let readProvider = null;
-let readProviderChainId = null;
+const readProviders = new Map(); // chainId -> ethers.JsonRpcProvider
 
 function getActiveChainId() { return activeChainId; }
 
@@ -59,13 +64,18 @@ function getChain(chainId) {
 
 function nativeSymbol() { return getChain().nativeSymbol; }
 
-function factoryAddress() {
-  if (deployment && Number(deployment.chainId) === activeChainId) {
+/* Factory address for ANY chain (used by the grouped homepage discovery).
+ * The deployment-file override applies only to the chain it belongs to. */
+function factoryAddressFor(chainId) {
+  if (deployment && Number(deployment.chainId) === chainId) {
     const fromFile = deployment.contracts?.launchpadFactory?.address;
     if (fromFile) return fromFile;
   }
-  return getChain().factoryAddress || null;
+  const cfg = getChain(chainId);
+  return (cfg && cfg.factoryAddress) || null;
 }
+
+function factoryAddress() { return factoryAddressFor(activeChainId); }
 
 function isDeployed() { return !!factoryAddress(); }
 
@@ -84,24 +94,30 @@ async function loadDeployment() {
   return null;
 }
 
-function getReadProvider() {
-  if (!getChain().rpcUrl) return null; // chain has no public RPC yet (e.g. Zero before mainnet)
-  if (!readProvider || readProviderChainId !== activeChainId) {
-    readProvider = new ethers.JsonRpcProvider(getChain().rpcUrl);
-    readProviderChainId = activeChainId;
+function getReadProviderFor(chainId) {
+  const cfg = getChain(chainId);
+  if (!cfg || !cfg.rpcUrl) return null; // chain has no public RPC yet (e.g. Zero before mainnet)
+  if (!readProviders.has(chainId)) {
+    readProviders.set(chainId, new ethers.JsonRpcProvider(cfg.rpcUrl));
   }
-  return readProvider;
+  return readProviders.get(chainId);
 }
 
-function getReadFactory() {
-  const addr = factoryAddress();
+function getReadProvider() { return getReadProviderFor(activeChainId); }
+
+function getReadFactoryFor(chainId) {
+  const addr = factoryAddressFor(chainId);
   if (!addr) return null;
-  return new ethers.Contract(addr, FACTORY_ABI, getReadProvider());
+  return new ethers.Contract(addr, FACTORY_ABI, getReadProviderFor(chainId));
 }
 
-function getReadToken(tokenAddr) {
-  return new ethers.Contract(tokenAddr, ERC20_ABI, getReadProvider());
+function getReadFactory() { return getReadFactoryFor(activeChainId); }
+
+function getReadTokenFor(tokenAddr, chainId) {
+  return new ethers.Contract(tokenAddr, ERC20_ABI, getReadProviderFor(chainId));
 }
+
+function getReadToken(tokenAddr) { return getReadTokenFor(tokenAddr, activeChainId); }
 
 /* Ask the wallet to switch to a given chain; if the wallet does not know
  * the chain yet, offer to add it from the chains.js configuration. */
@@ -220,3 +236,198 @@ function initChainUI() {
 }
 
 document.addEventListener("DOMContentLoaded", initChainUI);
+
+/* ---------- Small helpers ---------- */
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function timeAgo(tsSeconds) {
+  if (!tsSeconds) return "—";
+  const diff = Math.max(0, Math.floor(Date.now() / 1000) - tsSeconds);
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+/* ---------- Token metadata (IPFS) ---------- */
+
+const IPFS_GATEWAY = "https://ipfs.io/ipfs/";
+const tokenMetadataCache = new Map(); // token address (lowercase) -> Promise<meta|null>
+
+function ipfsToHttp(uri) {
+  if (!uri) return null;
+  const u = String(uri).trim();
+  if (u.startsWith("ipfs://")) return IPFS_GATEWAY + u.slice("ipfs://".length);
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  return null;
+}
+
+/* Resolve a token's metadataURI to { name, symbol, description, image }.
+ * ipfs:// URIs are fetched through the public gateway; https:// URIs are
+ * fetched directly. Returns null on any failure — callers fall back to the
+ * on-chain name/symbol and a letter placeholder. Results (including
+ * failures) are cached per token address for the page lifetime, so a slow
+ * or dead metadata URI can never break or block rendering. */
+function resolveTokenMetadata(tokenAddr, metadataURI) {
+  // Keyed by address + URI: the same address on another chain is a
+  // different token, but its metadata is fully determined by the URI.
+  const key = String(tokenAddr).toLowerCase() + "|" + String(metadataURI || "");
+  if (tokenMetadataCache.has(key)) return tokenMetadataCache.get(key);
+  const promise = (async () => {
+    const url = ipfsToHttp(metadataURI);
+    if (!url) return null;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 6000);
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || typeof data !== "object") return null;
+      return {
+        name: typeof data.name === "string" ? data.name : null,
+        symbol: typeof data.symbol === "string" ? data.symbol : null,
+        description: typeof data.description === "string" ? data.description : null,
+        image: ipfsToHttp(data.image)
+      };
+    } catch (_) { return null; }
+  })();
+  tokenMetadataCache.set(key, promise);
+  return promise;
+}
+
+/* Placeholder logo: a disc with the token symbol's first letter. */
+function tokenLogoPlaceholderHtml(symbol) {
+  const letter = (String(symbol || "?").trim().charAt(0) || "?").toUpperCase();
+  return '<span class="token-logo token-logo-placeholder">' + esc(letter) + "</span>";
+}
+
+/* ---------- Discovery: factory event scanning ----------
+ * Scans TokenCreated / Buy / Sell logs from the active chain's RPC in
+ * 2000-block chunks, starting at the factory deployment block when it is
+ * known (the deploy tx recorded in the deployment file), otherwise the
+ * most recent FALLBACK_SCAN_BLOCKS blocks. Per token it aggregates:
+ * creation block/time, lifetime native volume (Buy: quoteInNet + fee,
+ * i.e. the gross native amount paid in; Sell: quoteOutGross), trade
+ * count, and last activity block/time. Aggregates are cached in
+ * localStorage keyed by chainId + factory address, so repeat visits only
+ * scan blocks added since the last visit. Any failure keeps whatever was
+ * scanned so far and the UI simply keeps showing "—" for the missing
+ * fields — the token list itself never waits on this scan. */
+
+const SCAN_CHUNK_BLOCKS = 2000;
+const FALLBACK_SCAN_BLOCKS = 100000;
+
+function scanCacheKeyFor(chainId) {
+  return "padhaus.scan.v1." + chainId + "." + (factoryAddressFor(chainId) || "").toLowerCase();
+}
+
+function loadScanCacheFor(chainId) {
+  try {
+    const raw = localStorage.getItem(scanCacheKeyFor(chainId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.lastBlock !== "number" || !parsed.tokens) return null;
+    return parsed;
+  } catch (_) { return null; }
+}
+
+function saveScanCacheFor(chainId, cache) {
+  try { localStorage.setItem(scanCacheKeyFor(chainId), JSON.stringify(cache)); } catch (_) { /* storage full or unavailable */ }
+}
+
+async function resolveScanStartBlockFor(provider, chainId, latest) {
+  // Preferred: the block the factory was deployed in, from the deploy tx
+  // recorded in the deployment file (only when it belongs to this chain).
+  if (deployment && Number(deployment.chainId) === chainId) {
+    const deployTx = deployment.contracts?.launchpadFactory?.deployTx;
+    if (deployTx) {
+      try {
+        const receipt = await provider.getTransactionReceipt(deployTx);
+        if (receipt) return receipt.blockNumber;
+      } catch (_) { /* fall through to the window fallback */ }
+    }
+  }
+  return Math.max(0, latest - FALLBACK_SCAN_BLOCKS);
+}
+
+/* Runs the scan for one chain and calls onUpdate(cache) once at the end
+ * (or with the cached data immediately when there is nothing new). */
+async function scanFactoryEventsFor(chainId, onUpdate) {
+  const provider = getReadProviderFor(chainId);
+  const fAddr = factoryAddressFor(chainId);
+  if (!provider || !fAddr) return null;
+  const iface = new ethers.Interface(FACTORY_ABI);
+  const topics = [[
+    iface.getEvent("TokenCreated").topicHash,
+    iface.getEvent("Buy").topicHash,
+    iface.getEvent("Sell").topicHash
+  ]];
+  const latest = await provider.getBlockNumber();
+  let cache = loadScanCacheFor(chainId);
+  if (!cache) {
+    const startBlock = await resolveScanStartBlockFor(provider, chainId, latest);
+    cache = { startBlock, lastBlock: startBlock - 1, tokens: {}, blockTimes: {} };
+  }
+  for (let from = cache.lastBlock + 1; from <= latest; from += SCAN_CHUNK_BLOCKS) {
+    const to = Math.min(from + SCAN_CHUNK_BLOCKS - 1, latest);
+    let logs;
+    try {
+      logs = await provider.getLogs({ address: fAddr, topics, fromBlock: from, toBlock: to });
+    } catch (_) {
+      break; // keep the last good chunk boundary in the cache
+    }
+    for (const log of logs) {
+      let parsed;
+      try { parsed = iface.parseLog({ topics: log.topics, data: log.data }); } catch (_) { continue; }
+      if (!parsed) continue;
+      const tokenKey = String(parsed.args.token).toLowerCase();
+      const agg = cache.tokens[tokenKey] || (cache.tokens[tokenKey] = {
+        createdBlock: null, createdAt: null, volumeWei: "0", trades: 0, lastBlock: null, lastAt: null
+      });
+      if (parsed.name === "TokenCreated") {
+        if (agg.createdBlock === null || log.blockNumber < agg.createdBlock) agg.createdBlock = log.blockNumber;
+      } else if (parsed.name === "Buy" || parsed.name === "Sell") {
+        const amount = parsed.name === "Buy"
+          ? parsed.args.quoteInNet + parsed.args.fee
+          : parsed.args.quoteOutGross;
+        agg.volumeWei = (BigInt(agg.volumeWei) + amount).toString();
+        agg.trades += 1;
+        if (agg.lastBlock === null || log.blockNumber > agg.lastBlock) agg.lastBlock = log.blockNumber;
+      }
+    }
+    cache.lastBlock = to;
+    saveScanCacheFor(chainId, cache);
+  }
+  // Resolve timestamps for the creation / last-activity blocks we track.
+  const needBlocks = new Set();
+  for (const agg of Object.values(cache.tokens)) {
+    if (agg.createdBlock !== null && agg.createdAt === null) needBlocks.add(agg.createdBlock);
+    if (agg.lastBlock !== null && agg.lastAt === null) needBlocks.add(agg.lastBlock);
+  }
+  for (const bn of needBlocks) {
+    if (cache.blockTimes[bn] === undefined) {
+      try {
+        const block = await provider.getBlock(bn);
+        if (block) cache.blockTimes[bn] = block.timestamp;
+      } catch (_) { /* leave unresolved; the UI shows "—" */ }
+    }
+  }
+  for (const agg of Object.values(cache.tokens)) {
+    if (agg.createdBlock !== null && cache.blockTimes[agg.createdBlock]) agg.createdAt = cache.blockTimes[agg.createdBlock];
+    if (agg.lastBlock !== null && cache.blockTimes[agg.lastBlock]) agg.lastAt = cache.blockTimes[agg.lastBlock];
+  }
+  saveScanCacheFor(chainId, cache);
+  if (onUpdate) onUpdate(cache);
+  return cache;
+}
+
+/* Scan for the currently active chain (single-chain pages). */
+async function scanFactoryEvents(onUpdate) {
+  return scanFactoryEventsFor(activeChainId, onUpdate);
+}
