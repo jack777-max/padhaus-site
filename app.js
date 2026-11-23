@@ -324,11 +324,12 @@ function banner(el, msg, isError = false) {
   el.className = isError ? "banner error" : "banner";
 }
 
-/* If the active chain is not deployed yet, return true — the calling
- * page must disable its write buttons. No banner is shown (owner's
- * call, 2026-11-23: no not-live notices on the site). */
+/* Buttons stay live on every network (owner's call, 2026-11-23 22:07
+ * WIB: "nyalain aja" — wallet connect works everywhere; a launch or
+ * trade attempt on a network without a factory stops at click time
+ * via the guard in connectAndGetFactory). Always returns false. */
 function deploymentNotice(el) {
-  return !isDeployed();
+  return false;
 }
 
 /* ---------- Network switcher (header) ---------- */
