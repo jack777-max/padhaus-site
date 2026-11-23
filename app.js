@@ -308,7 +308,7 @@ async function connectWallet() {
 
 function getWriteFactory(signer) {
   const addr = factoryAddress();
-  if (!addr) throw new Error("Padhaus is not live yet on " + getChain().name + ".");
+  if (!addr) throw new Error("Padhaus has no factory on " + getChain().name + " yet.");
   return new ethers.Contract(addr, FACTORY_ABI, signer);
 }
 
