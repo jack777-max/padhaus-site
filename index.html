@@ -7,8 +7,8 @@
 <meta name="description" content="Padhaus is a fair-launch launchpad: launching is free, creators set their own trade fee, and fees are frozen per token at launch.">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
-<script src="chains.js?v=20261123e"></script>
-<script src="app.js?v=20261123e"></script>
+<script src="chains.js?v=20261124a"></script>
+<script src="app.js?v=20261124a"></script>
 </head>
 <body>
 <header>
@@ -16,6 +16,7 @@
   <nav>
     <a href="index.html">Tokens</a>
     <a href="launch.html">Launch Token</a>
+    <a href="https://x.com/padhaus" target="_blank" rel="noopener">X</a>
   </nav>
   <div class="header-right">
     <select id="chainSwitcher" class="chain-switcher" aria-label="Network"></select>
@@ -214,8 +215,10 @@
         return;
       }
       g.threshold = await factory.graduationThreshold();
+      const hidden = (PADHAUS_HIDDEN_TOKENS[chainId] || []);
       for (let i = 0; i < count; i++) {
         const addr = await factory.allTokens(i);
+        if (hidden.includes(addr.toLowerCase())) continue;
         const token = getReadTokenFor(addr, chainId);
         const [name, symbol, supply, price, curve] = await Promise.all([
           token.name(), token.symbol(), token.totalSupply(), factory.spotPrice(addr), factory.getCurve(addr)
@@ -225,6 +228,10 @@
           createdBlock: null, createdAt: null, volumeWei: 0n, trades: 0,
           lastBlock: null, lastAt: null, scanned: false
         });
+      }
+      if (!g.tokens.length) {
+        body.innerHTML = '<p class="muted">No tokens launched on this network yet. <a href="launch.html?chain=' + chainId + '">Launch the first one</a>.</p>';
+        return;
       }
       body.innerHTML = '<div class="group-list"></div><p class="muted scan-note"></p>';
       renderGroup(chainId);

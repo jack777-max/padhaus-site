@@ -109,3 +109,10 @@ const PADHAUS_CHAIN_ORDER = [97, 4663, 56, 8453, 1, 33002];
 
 /* Active chain when the user has never picked one. */
 const PADHAUS_DEFAULT_CHAIN_ID = 97;
+
+/* Tokens hidden from the site's listings (internal test tokens). They still
+ * exist on-chain; the web simply never displays them. Keys are chain ids,
+ * values are lowercase token addresses. */
+const PADHAUS_HIDDEN_TOKENS = {
+  97: ["0x0b33c280a570b5f1897839b0be2daefafad2841e"]
+};
