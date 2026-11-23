@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Padhaus — Launch Token</title>
-<link rel="stylesheet" href="style.css?v=20261124c">
+<link rel="stylesheet" href="style.css?v=20261124d">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
 <script src="chains.js?v=20261124a"></script>
-<script src="app.js?v=20261124a"></script>
+<script src="app.js?v=20261124b"></script>
 </head>
 <body>
 <header>
@@ -53,7 +53,21 @@
     <label>Trade fee (%) — your choice, 0–5%</label>
     <input id="fee" type="number" min="0" max="5" step="0.1" value="1">
     <p class="muted">This fee is frozen at launch and can never be changed again.
-    Split 50/50: half for you as the creator, half for the platform. 0% = a token with no fee.</p>
+    Split 50/50: half for you as the creator, half for the platform. 0% = a token with no fee.
+    Your creator half is then split by the buyback and community settings below.</p>
+    <label>Buyback (% of your creator share) — 0–50%</label>
+    <input id="buyback" type="number" min="0" max="50" step="0.5" value="25">
+    <p class="muted">This part of your creator fee is set aside in a buyback balance — anyone can trigger it to buy your token and burn what it buys.</p>
+    <label>Community (% of your creator share) — 0–50%</label>
+    <input id="community" type="number" min="0" max="50" step="0.5" value="0">
+    <p class="muted">This part of your creator fee accrues to a community wallet you choose below. Buyback + community together cannot exceed 100% of your creator share.</p>
+    <div id="communityWalletRow" style="display:none">
+      <label>Community wallet</label>
+      <input id="communityWallet" placeholder="0x…">
+    </div>
+    <label>Initial buy (optional, <span data-native-symbol>tBNB</span>)</label>
+    <input id="initialBuy" type="number" step="any" min="0" placeholder="0">
+    <p class="muted">Buy your own token at the launch price in the same transaction as the launch. Max 5% of the total supply. Leave empty for a plain launch.</p>
     <div class="launch-actions">
       <button id="connect">1. Connect Wallet</button>
       <button id="disconnect" class="secondary" style="display:none">Disconnect</button>
@@ -84,6 +98,10 @@ let imageFile = null;
       "You can still launch, or paste a Metadata URI below if you already have one.";
   }
 })();
+document.getElementById("community").oninput = () => {
+  const v = parseFloat(document.getElementById("community").value);
+  document.getElementById("communityWalletRow").style.display = (!isNaN(v) && v > 0) ? "" : "none";
+};
 document.getElementById("image").onchange = (ev) => {
   const status = document.getElementById("status");
   const wrap = document.getElementById("imagePreviewWrap");
@@ -133,6 +151,34 @@ document.getElementById("launch").onclick = async () => {
     status.textContent = "Trade fee must be between 0% and 5%."; return;
   }
   const feeBps = Math.round(feePercent * 100);
+  const buybackPercent = parseFloat(document.getElementById("buyback").value);
+  const communityPercent = parseFloat(document.getElementById("community").value);
+  if (isNaN(buybackPercent) || buybackPercent < 0 || buybackPercent > 50) {
+    status.textContent = "Buyback must be between 0% and 50% of your creator share."; return;
+  }
+  if (isNaN(communityPercent) || communityPercent < 0 || communityPercent > 50) {
+    status.textContent = "Community share must be between 0% and 50% of your creator share."; return;
+  }
+  if (buybackPercent + communityPercent > 100) {
+    status.textContent = "Buyback + community together cannot exceed 100% of your creator share."; return;
+  }
+  const buybackBps = Math.round(buybackPercent * 100);
+  const communityBps = Math.round(communityPercent * 100);
+  let communityWallet = ethers.ZeroAddress;
+  if (communityBps > 0) {
+    communityWallet = document.getElementById("communityWallet").value.trim();
+    if (!ethers.isAddress(communityWallet)) {
+      status.textContent = "A valid community wallet address is required when the community share is above 0%."; return;
+    }
+  }
+  const initialBuyRaw = document.getElementById("initialBuy").value.trim();
+  let initialBuyValue = 0n;
+  if (initialBuyRaw) {
+    if (isNaN(Number(initialBuyRaw)) || Number(initialBuyRaw) < 0) {
+      status.textContent = "Initial buy must be a valid amount (0 or more)."; return;
+    }
+    if (Number(initialBuyRaw) > 0) initialBuyValue = ethers.parseEther(initialBuyRaw);
+  }
   try {
     // Precedence: a manually entered Metadata URI wins outright — no
     // metadata JSON is built and nothing is uploaded. Otherwise, when any
@@ -155,7 +201,7 @@ document.getElementById("launch").onclick = async () => {
     }
     const factory = getWriteFactory(signer);
     status.textContent = "Waiting for wallet signature…";
-    const tx = await factory.createToken(name, symbol, finalUri, feeBps);
+    const tx = await factory.createToken(name, symbol, finalUri, feeBps, buybackBps, communityBps, communityWallet, { value: initialBuyValue });
     status.textContent = "Transaction sent: " + tx.hash + " — waiting for confirmation…";
     const receipt = await tx.wait();
     const count = Number(await getReadFactory().tokenCount());

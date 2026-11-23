@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
 <script src="chains.js?v=20261124a"></script>
-<script src="app.js?v=20261124a"></script>
+<script src="app.js?v=20261124b"></script>
 </head>
 <body>
 <header>
@@ -40,9 +40,14 @@
       <tr><th>Tokens sold from curve</th><td id="sold">—</td></tr>
       <tr><th>Status</th><td id="grad">—</td></tr>
       <tr><th>Creator</th><td id="creator" class="mono">—</td></tr>
+      <tr><th>Buyback share</th><td id="buybackShare">—</td></tr>
+      <tr><th>Community share</th><td id="communityShare">—</td></tr>
+      <tr><th>Community wallet</th><td id="communityWallet" class="mono">—</td></tr>
+      <tr><th>Buyback balance</th><td id="buybackBal">—</td></tr>
       <tr><th>My token balance</th><td id="myBal">— (connect wallet)</td></tr>
     </table>
     <p><button id="connect" class="secondary">Connect Wallet</button> <button id="disconnect" class="secondary" style="display:none">Disconnect</button> <span id="acct" class="muted"></span></p>
+    <p><button id="buybackBtn" style="display:none" disabled>Execute buyback</button> <span class="muted">Spends the accrued buyback balance to buy this token and burn it. Anyone can trigger it.</span></p>
   </div>
   <div class="grid">
     <div class="card">
@@ -70,8 +75,8 @@ let signer = null, account = null;
 async function refresh() {
   const factory = getReadFactory();
   const token = getReadToken(tokenAddr);
-  const [name, symbol, price, curve] = await Promise.all([
-    token.name(), token.symbol(), factory.spotPrice(tokenAddr), factory.getCurve(tokenAddr)
+  const [name, symbol, price, curve, bbBalance] = await Promise.all([
+    token.name(), token.symbol(), factory.spotPrice(tokenAddr), factory.getCurve(tokenAddr), factory.buybackBalance(tokenAddr)
   ]);
   document.getElementById("title").textContent = name + " ($" + symbol + ")";
   document.getElementById("addr").textContent = tokenAddr;
@@ -80,6 +85,13 @@ async function refresh() {
   document.getElementById("sold").textContent = fmt(curve.tokensSold) + " token";
   document.getElementById("grad").textContent = curve.graduated ? "Graduated (curve stopped)" : "On bonding curve";
   document.getElementById("creator").textContent = curve.creator;
+  document.getElementById("buybackShare").textContent = (Number(curve.buybackBps) / 100) + "% of the creator share";
+  document.getElementById("communityShare").textContent = (Number(curve.communityBps) / 100) + "% of the creator share";
+  document.getElementById("communityWallet").textContent = Number(curve.communityBps) > 0 ? curve.communityWallet : "—";
+  document.getElementById("buybackBal").textContent = fmt(bbBalance) + " " + nativeSymbol();
+  const bbBtn = document.getElementById("buybackBtn");
+  bbBtn.style.display = bbBalance > 0n ? "" : "none";
+  bbBtn.disabled = !account;
   if (account) {
     document.getElementById("myBal").textContent = fmt(await token.balanceOf(account)) + " token";
   }
@@ -132,6 +144,7 @@ document.getElementById("connect").onclick = async () => {
     document.getElementById("disconnect").style.display = "";
     document.getElementById("buyBtn").disabled = false;
     document.getElementById("sellBtn").disabled = false;
+    document.getElementById("buybackBtn").disabled = false;
     await refresh();
   } catch (e) { document.getElementById("status").textContent = "Failed: " + e.message; }
 };
@@ -142,6 +155,7 @@ window.addEventListener("padhaus:disconnected", () => {
   document.getElementById("disconnect").style.display = "none";
   document.getElementById("buyBtn").disabled = true;
   document.getElementById("sellBtn").disabled = true;
+  document.getElementById("buybackBtn").disabled = true;
   document.getElementById("myBal").textContent = "— (connect wallet)";
   document.getElementById("status").textContent = "Wallet disconnected.";
 });
@@ -160,6 +174,19 @@ document.getElementById("buyBtn").onclick = async () => {
     status.textContent = "Sent: " + tx.hash + " — waiting for confirmation…";
     await tx.wait();
     status.textContent = "Buy successful. Tx: " + tx.hash;
+    await refresh();
+  } catch (e) { status.textContent = "Failed: " + (e.shortMessage || e.message); }
+};
+
+document.getElementById("buybackBtn").onclick = async () => {
+  const status = document.getElementById("status");
+  try {
+    const factory = getWriteFactory(signer);
+    status.textContent = "Waiting for signature…";
+    const tx = await factory.executeBuyback(tokenAddr);
+    status.textContent = "Sent: " + tx.hash + " — waiting for confirmation…";
+    await tx.wait();
+    status.textContent = "Buyback executed. Tx: " + tx.hash;
     await refresh();
   } catch (e) { status.textContent = "Failed: " + (e.shortMessage || e.message); }
 };
