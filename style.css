@@ -104,3 +104,6 @@ a { color: var(--accent); }
 /* ---------- launch form (image upload) ---------- */
 .image-preview { margin: .1rem 0 .8rem; }
 .image-preview .token-logo { width: 64px; height: 64px; }
+
+.file-pick { display: inline-block; background: var(--border-strong); color: var(--text); border-radius: 8px; padding: .55rem 1.1rem; font-weight: 700; cursor: pointer; margin-right: .6rem; }
+.file-pick:hover { background: #354154; }

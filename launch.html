@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Padhaus — Launch Token</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261124b">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
 <script src="chains.js?v=20261124a"></script>
 <script src="app.js?v=20261124a"></script>
@@ -35,7 +35,8 @@
     <input id="symbol" placeholder="e.g. KUJI">
     <p id="imageNote" class="muted"></p>
     <label>Token image (optional)</label>
-    <input id="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+    <input id="image" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    <label for="image" class="file-pick">Choose image</label><span id="imageName" class="muted">No file chosen</span>
     <div id="imagePreviewWrap" class="image-preview" style="display:none">
       <img id="imagePreview" class="token-logo" alt="Token image preview">
     </div>
@@ -85,6 +86,7 @@ document.getElementById("image").onchange = (ev) => {
   const status = document.getElementById("status");
   const wrap = document.getElementById("imagePreviewWrap");
   const file = ev.target.files && ev.target.files[0];
+  document.getElementById("imageName").textContent = file ? file.name : "No file chosen";
   imageFile = null;
   wrap.style.display = "none";
   if (!file) return;
