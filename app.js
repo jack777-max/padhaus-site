@@ -329,8 +329,8 @@ function banner(el, msg, isError = false) {
 function deploymentNotice(el) {
   if (!isDeployed()) {
     const cfg = getChain();
-    banner(el, cfg.name + " — coming soon. Padhaus is on its way to this network; " +
-      "browsing only for now, launch and trade actions are disabled here.", true);
+    banner(el, cfg.name + " — no tokens on this network yet. " +
+      "Launch and trade actions are disabled here.", true);
     return true;
   }
   return false;
