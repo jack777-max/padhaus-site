@@ -28,7 +28,7 @@ const FACTORY_ABI = [
   "event TokenCreated(address indexed token, address indexed creator, string name, string symbol, string metadataURI)",
   "event Buy(address indexed token, address indexed buyer, uint256 quoteInNet, uint256 fee, uint256 tokensOut)",
   "event Sell(address indexed token, address indexed seller, uint256 tokensIn, uint256 quoteOutGross, uint256 fee, uint256 quoteOutNet)",
-  "event Graduated(address indexed token, uint256 quoteToLP, uint256 tokensToLP, uint256 liquidity, address lpTo)"
+  "event Graduated(address indexed token, address indexed pool, uint256 positionId, uint256 quoteToLP, uint256 tokensToLP, uint256 liquidity)"
 ];
 const ERC20_ABI = [
   "function name() view returns (string)",
@@ -352,7 +352,7 @@ function tokenLinksHtml(meta) {
  *   "https://padhaus-upload.vercel.app/api/pin"
  * While it is empty, image upload is disabled in the launch form and
  * launching without an image works exactly as before. */
-const PADHAUS_UPLOAD_ENDPOINT = "";
+const PADHAUS_UPLOAD_ENDPOINT = "https://pogent-upload.vercel.app/api/pin";
 
 function uploadConfigured() { return !!PADHAUS_UPLOAD_ENDPOINT; }
 
