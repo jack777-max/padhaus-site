@@ -1,15 +1,16 @@
-/* Padhaus — front-end multi-chain.
- * Konfigurasi jaringan hidup di chains.js (PADHAUS_CHAINS): chainId ->
+/* Padhaus — multi-chain front end.
+ * Network configuration lives in chains.js (PADHAUS_CHAINS): chainId ->
  * { name, rpcUrl, factoryAddress, nativeSymbol, explorerUrl, testnet }.
- * Baca (read) lewat RPC publik chain aktif; tulis (write) lewat wallet
- * browser (MetaMask) yang diarahkan ke chain aktif.
- * Chain aktif dipilih lewat dropdown #chainSwitcher di header, disimpan di
- * localStorage, dan bisa dipaksa lewat parameter URL ?chain=<chainId>.
- * Chain yang factoryAddress-nya null = belum terdeploy: UI menandainya
- * "not deployed yet" dan menonaktifkan semua aksi tulis.
- * Khusus chain BSC Testnet: deployment-testnet.json (hasil script deploy)
- * tetap dibaca dan alamat factory-nya dipakai sebagai override bila
- * chainId file itu cocok dengan chain aktif.
+ * Reads go through the active chain's public RPC; writes go through the
+ * browser wallet (MetaMask), pointed at the active chain.
+ * The active chain is picked in the #chainSwitcher dropdown in the header,
+ * stored in localStorage, and can be forced with the URL parameter
+ * ?chain=<chainId>.
+ * A chain whose factoryAddress is null = not deployed yet: the UI marks it
+ * "not deployed yet" and disables all write actions.
+ * BSC Testnet only: deployment-testnet.json (the deploy script's output) is
+ * still read, and its factory address is used as an override when that
+ * file's chainId matches the active chain.
  */
 const FACTORY_ABI = [
   "function tokenCount() view returns (uint256)",
@@ -33,7 +34,7 @@ const ERC20_ABI = [
   "function approve(address, uint256) returns (bool)"
 ];
 
-/* ---------- Chain aktif ---------- */
+/* ---------- Active chain ---------- */
 
 function resolveInitialChainId() {
   const fromUrl = new URLSearchParams(location.search).get("chain");
@@ -41,12 +42,12 @@ function resolveInitialChainId() {
   try {
     const saved = Number(localStorage.getItem("padhaus.chainId"));
     if (saved && PADHAUS_CHAINS[saved]) return saved;
-  } catch (_) { /* localStorage tidak tersedia */ }
+  } catch (_) { /* localStorage unavailable */ }
   return PADHAUS_DEFAULT_CHAIN_ID;
 }
 
 let activeChainId = resolveInitialChainId();
-let deployment = null; // isi deployment-testnet.json (override khusus chain yang cocok)
+let deployment = null; // contents of deployment-testnet.json (override for the matching chain only)
 let readProvider = null;
 let readProviderChainId = null;
 
@@ -68,22 +69,23 @@ function factoryAddress() {
 
 function isDeployed() { return !!factoryAddress(); }
 
-/* Baca deployment-testnet.json bila ada (kompatibilitas alur deploy lama).
- * Tidak fatal bila file tidak ada — konfigurasi chains.js sudah cukup. */
+/* Read deployment-testnet.json if present (compatibility with the older
+ * deploy flow). Not fatal if the file is missing — the chains.js config
+ * is enough on its own. */
 async function loadDeployment() {
   const candidates = ["../deployment-testnet.json", "./deployment-testnet.json", "../../deployment-testnet.json"];
   for (const path of candidates) {
     try {
       const res = await fetch(path);
       if (res.ok) { deployment = await res.json(); return deployment; }
-    } catch (_) { /* coba path berikutnya */ }
+    } catch (_) { /* try the next path */ }
   }
   deployment = null;
   return null;
 }
 
 function getReadProvider() {
-  if (!getChain().rpcUrl) return null; // chain belum punya RPC publik (mis. Zero sebelum mainnet)
+  if (!getChain().rpcUrl) return null; // chain has no public RPC yet (e.g. Zero before mainnet)
   if (!readProvider || readProviderChainId !== activeChainId) {
     readProvider = new ethers.JsonRpcProvider(getChain().rpcUrl);
     readProviderChainId = activeChainId;
@@ -101,8 +103,8 @@ function getReadToken(tokenAddr) {
   return new ethers.Contract(tokenAddr, ERC20_ABI, getReadProvider());
 }
 
-/* Minta wallet pindah ke chain tertentu; bila chain belum dikenal wallet,
- * tawarkan untuk menambahkannya dari konfigurasi chains.js. */
+/* Ask the wallet to switch to a given chain; if the wallet does not know
+ * the chain yet, offer to add it from the chains.js configuration. */
 async function ensureWalletChain(chainId) {
   const cfg = getChain(chainId);
   const hexId = "0x" + chainId.toString(16);
@@ -126,7 +128,7 @@ async function ensureWalletChain(chainId) {
 }
 
 async function connectWallet() {
-  if (!window.ethereum) throw new Error("Wallet browser (MetaMask) tidak ditemukan.");
+  if (!window.ethereum) throw new Error("Browser wallet (MetaMask) not found.");
   const provider = new ethers.BrowserProvider(window.ethereum);
   await provider.send("eth_requestAccounts", []);
   const network = await provider.getNetwork();
@@ -139,7 +141,7 @@ async function connectWallet() {
 
 function getWriteFactory(signer) {
   const addr = factoryAddress();
-  if (!addr) throw new Error("Factory belum terdeploy di " + getChain().name + ".");
+  if (!addr) throw new Error("Factory is not deployed yet on " + getChain().name + ".");
   return new ethers.Contract(addr, FACTORY_ABI, signer);
 }
 
@@ -155,19 +157,19 @@ function banner(el, msg, isError = false) {
   el.className = isError ? "banner error" : "banner";
 }
 
-/* Bila chain aktif belum terdeploy, tampilkan pemberitahuan dan kembalikan
- * true — halaman pemanggil wajib menonaktifkan tombol tulisnya. */
+/* If the active chain is not deployed yet, show a notice and return
+ * true — the calling page must disable its write buttons. */
 function deploymentNotice(el) {
   if (!isDeployed()) {
     const cfg = getChain();
-    banner(el, "Padhaus belum terdeploy di " + cfg.name + " (chain " + cfg.chainId + ") — " +
-      "jaringan ini preset saja. Daftar token dan aksi launch/trade dinonaktifkan untuk chain ini.", true);
+    banner(el, "Padhaus is not deployed yet on " + cfg.name + " (chain " + cfg.chainId + ") — " +
+      "this network is a preset only. The token list and launch/trade actions are disabled for this chain.", true);
     return true;
   }
   return false;
 }
 
-/* ---------- Pemilih jaringan (header) ---------- */
+/* ---------- Network switcher (header) ---------- */
 
 function chainBadgeText() {
   const cfg = getChain();
@@ -176,17 +178,17 @@ function chainBadgeText() {
 }
 
 async function onChainSelected(newChainId) {
-  try { localStorage.setItem("padhaus.chainId", String(newChainId)); } catch (_) { /* abaikan */ }
-  // Bila ada wallet yang sudah terhubung, minta wallet ikut pindah jaringan.
+  try { localStorage.setItem("padhaus.chainId", String(newChainId)); } catch (_) { /* ignore */ }
+  // If a wallet is already connected, ask it to switch networks too.
   if (window.ethereum) {
     try {
       const accounts = await window.ethereum.request({ method: "eth_accounts" });
       if (accounts && accounts.length > 0) await ensureWalletChain(newChainId);
-    } catch (_) { /* wallet menolak diam-diam tidak fatal; connectWallet() akan mengulang permintaan */ }
+    } catch (_) { /* a silent wallet rejection is not fatal; connectWallet() will retry the request */ }
   }
-  // Bangun ulang halaman dari konfigurasi chain baru. Halaman token bersifat
-  // khusus-chain (alamat token tidak berlaku lintas chain), jadi dari sana
-  // pindah ke daftar token chain tujuan.
+  // Rebuild the page from the new chain's configuration. The token page is
+  // chain-specific (a token address means nothing across chains), so from
+  // there, route to the target chain's token list instead.
   const onTokenPage = location.pathname.endsWith("token.html");
   const target = new URL(onTokenPage ? "index.html" : location.pathname, location.href);
   target.search = "?chain=" + newChainId;

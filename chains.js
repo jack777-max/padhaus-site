@@ -1,33 +1,33 @@
-/* Padhaus — registri jaringan (multi-chain).
+/* Padhaus — network registry (multi-chain).
  *
- * SATU-SATUNYA sumber kebenaran front-end soal jaringan. Semua halaman
- * (index / launch / token) membaca dari sini lewat app.js — tidak ada lagi
- * chain ID / RPC / alamat factory yang ditulis keras di halaman.
+ * The SINGLE source of truth for the front end's networks. Every page
+ * (index / launch / token) reads from here via app.js — no chain ID, RPC,
+ * or factory address is hardcoded in the pages anymore.
  *
- * Menambah chain EVM baru = tambah satu entri di PADHAUS_CHAINS (+ urutan
- * tampil di PADHAUS_CHAIN_ORDER). Format tiap entri:
+ * Adding a new EVM chain = add one entry to PADHAUS_CHAINS (+ its display
+ * order in PADHAUS_CHAIN_ORDER). Entry format:
  *
- *   chainId        number        ID jaringan EVM.
- *   name           string        Nama tampil (dropdown, badge, wallet).
- *   rpcUrl         string|null   RPC publik untuk baca on-chain.
- *                                null = RPC publik belum tersedia.
- *   factoryAddress string|null   Alamat LaunchpadFactory di chain ini.
- *                                null = BELUM terdeploy: UI menandai
- *                                "not deployed yet" dan menonaktifkan
- *                                semua aksi tulis (launch / buy / sell).
- *   nativeSymbol   string        Simbol koin native (ETH, BNB, tBNB, …).
- *   nativeName     string        Nama koin native (untuk wallet_addEthereumChain).
- *   explorerUrl    string|null   Block explorer (null bila belum terverifikasi).
- *   testnet        boolean       true = jaringan uji (uang tidak nyata).
+ *   chainId        number        EVM network ID.
+ *   name           string        Display name (dropdown, badge, wallet).
+ *   rpcUrl         string|null   Public RPC for on-chain reads.
+ *                                null = no public RPC available yet.
+ *   factoryAddress string|null   LaunchpadFactory address on this chain.
+ *                                null = NOT deployed yet: the UI marks it
+ *                                "not deployed yet" and disables all write
+ *                                actions (launch / buy / sell).
+ *   nativeSymbol   string        Native coin symbol (ETH, BNB, tBNB, …).
+ *   nativeName     string        Native coin name (for wallet_addEthereumChain).
+ *   explorerUrl    string|null   Block explorer (null if not yet verified).
+ *   testnet        boolean       true = test network (not real money).
  *
- * Preset deploy per chain (parameter kurva, router, kunci deployer) ada di
- * folder chains/ di root proyek — lihat chains/README.md.
+ * Per-chain deploy presets (curve parameters, router, deployer key) live
+ * in the chains/ folder at the project root — see chains/README.md.
  */
 const PADHAUS_CHAINS = {
-  // Chain default & satu-satunya yang sudah terdeploy (Milestone 2).
-  // Alamat factory = deployment LIVE di deployment-testnet.json; app.js
-  // tetap membaca file itu dan memakainya sebagai override untuk chain ini
-  // bila chainId-nya cocok, jadi redeploy testnet tidak perlu edit file ini.
+  // Default chain & the only one deployed so far (Milestone 2).
+  // Factory address = the LIVE deployment in deployment-testnet.json; app.js
+  // still reads that file and uses its address as an override for this chain
+  // when the file's chainId matches, so a testnet redeploy needs no edit here.
   97: {
     chainId: 97,
     name: "BSC Testnet",
@@ -38,8 +38,8 @@ const PADHAUS_CHAINS = {
     explorerUrl: "https://testnet.bscscan.com",
     testnet: true
   },
-  // Preset — belum terdeploy (factoryAddress null). Router graduasi untuk
-  // chain ini masih TODO-VERIFY (lihat chains/robinhood-chain.json).
+  // Preset — not deployed yet (factoryAddress null). The graduation router
+  // for this chain is still TODO-VERIFY (see chains/robinhood-chain.json).
   4663: {
     chainId: 4663,
     name: "Robinhood Chain",
@@ -50,7 +50,7 @@ const PADHAUS_CHAINS = {
     explorerUrl: null,
     testnet: false
   },
-  // Preset — belum terdeploy (factoryAddress null).
+  // Preset — not deployed yet (factoryAddress null).
   56: {
     chainId: 56,
     name: "BNB Smart Chain",
@@ -61,9 +61,9 @@ const PADHAUS_CHAINS = {
     explorerUrl: "https://bscscan.com",
     testnet: false
   },
-  // Preset — belum terdeploy (factoryAddress null). Ditambahkan 2026-11-23
-  // atas permintaan Ahmad; RPC terverifikasi hidup (eth_chainId = 0x1).
-  // Router graduasi masih TODO-VERIFY (lihat chains/ethereum.json).
+  // Preset — not deployed yet (factoryAddress null). Added 2026-11-23 at
+  // Ahmad's request; RPC verified live (eth_chainId = 0x1).
+  // Graduation router still TODO-VERIFY (see chains/ethereum.json).
   1: {
     chainId: 1,
     name: "Ethereum",
@@ -74,11 +74,12 @@ const PADHAUS_CHAINS = {
     explorerUrl: "https://etherscan.io",
     testnet: false
   },
-  // Preset — belum terdeploy (factoryAddress null). Chain BELUM mainnet:
-  // Zero (LayerZero) launch mainnet 30 Nov 2026 (chainId 33002, gas ZRO);
-  // per 23 Nov 2026 belum ada RPC/explorer publik, jadi rpcUrl null.
-  // Pantauan zero-chain-watch melaporkan parameter resmi begitu terbit,
-  // lalu entri ini diisi. Router graduasi TODO-VERIFY (chains/zero.json).
+  // Preset — not deployed yet (factoryAddress null). The chain is NOT on
+  // mainnet yet: Zero (LayerZero) launches mainnet on 30 Nov 2026 (chainId
+  // 33002, gas ZRO); as of 23 Nov 2026 there is no public RPC/explorer, so
+  // rpcUrl is null. The zero-chain-watch monitor reports the official
+  // parameters as soon as they are published, then this entry gets filled
+  // in. Graduation router TODO-VERIFY (chains/zero.json).
   33002: {
     chainId: 33002,
     name: "Zero (LayerZero)",
@@ -89,8 +90,8 @@ const PADHAUS_CHAINS = {
     explorerUrl: null,
     testnet: false
   },
-  // Preset — belum terdeploy (factoryAddress null). Router graduasi untuk
-  // chain ini masih TODO-VERIFY (lihat chains/base.json).
+  // Preset — not deployed yet (factoryAddress null). The graduation router
+  // for this chain is still TODO-VERIFY (see chains/base.json).
   8453: {
     chainId: 8453,
     name: "Base",
@@ -103,8 +104,8 @@ const PADHAUS_CHAINS = {
   }
 };
 
-/* Urutan tampil di dropdown pemilih jaringan (chain default pertama). */
+/* Display order in the network switcher dropdown (default chain first). */
 const PADHAUS_CHAIN_ORDER = [97, 4663, 56, 8453, 1, 33002];
 
-/* Chain aktif bila pengguna belum pernah memilih. */
+/* Active chain when the user has never picked one. */
 const PADHAUS_DEFAULT_CHAIN_ID = 97;

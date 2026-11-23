@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Padhaus — Detail Token</title>
+<title>Padhaus — Token Details</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
 <script src="chains.js"></script>
@@ -13,43 +13,43 @@
 <header>
   <a href="index.html">Padhaus</a> <span class="muted">— fair-launch launchpad</span>
   <nav>
-    <a href="index.html">Daftar Token</a>
+    <a href="index.html">Tokens</a>
     <a href="launch.html">Launch Token</a>
   </nav>
   <div class="header-right">
-    <select id="chainSwitcher" class="chain-switcher" aria-label="Jaringan"></select>
-    <span class="muted chain-badge">BSC Testnet · chain 97 · PROTOTIPE</span>
+    <select id="chainSwitcher" class="chain-switcher" aria-label="Network"></select>
+    <span class="muted chain-badge">BSC Testnet · chain 97 · PROTOTYPE</span>
   </div>
 </header>
 <main>
   <div id="notice" class="banner"></div>
-  <h2 id="title">Detail token</h2>
+  <h2 id="title">Token details</h2>
   <p class="mono" id="addr"></p>
   <div class="card">
     <table>
-      <tr><th>Harga spot</th><td id="price">—</td></tr>
-      <tr><th>Quote terkumpul (real)</th><td id="realQuote">—</td></tr>
-      <tr><th>Token terjual dari kurva</th><td id="sold">—</td></tr>
+      <tr><th>Spot price</th><td id="price">—</td></tr>
+      <tr><th>Quote collected (real)</th><td id="realQuote">—</td></tr>
+      <tr><th>Tokens sold from curve</th><td id="sold">—</td></tr>
       <tr><th>Status</th><td id="grad">—</td></tr>
-      <tr><th>Kreator</th><td id="creator" class="mono">—</td></tr>
-      <tr><th>Saldo token saya</th><td id="myBal">— (hubungkan wallet)</td></tr>
+      <tr><th>Creator</th><td id="creator" class="mono">—</td></tr>
+      <tr><th>My token balance</th><td id="myBal">— (connect wallet)</td></tr>
     </table>
-    <p><button id="connect" class="secondary">Hubungkan Wallet</button> <span id="acct" class="muted"></span></p>
+    <p><button id="connect" class="secondary">Connect Wallet</button> <span id="acct" class="muted"></span></p>
   </div>
   <div class="grid">
     <div class="card">
-      <h3>Beli</h3>
-      <label>Jumlah <span data-native-symbol>tBNB</span></label>
+      <h3>Buy</h3>
+      <label>Amount <span data-native-symbol>tBNB</span></label>
       <input id="buyAmount" type="number" step="any" min="0" placeholder="0.05">
-      <p class="muted" id="buyQuote">Estimasi: —</p>
-      <button id="buyBtn" disabled>Beli</button>
+      <p class="muted" id="buyQuote">Estimate: —</p>
+      <button id="buyBtn" disabled>Buy</button>
     </div>
     <div class="card">
-      <h3>Jual</h3>
-      <label>Jumlah token</label>
+      <h3>Sell</h3>
+      <label>Token amount</label>
       <input id="sellAmount" type="number" step="any" min="0" placeholder="1000">
-      <p class="muted" id="sellQuote">Estimasi: —</p>
-      <button id="sellBtn" disabled>Jual</button>
+      <p class="muted" id="sellQuote">Estimate: —</p>
+      <button id="sellBtn" disabled>Sell</button>
     </div>
   </div>
   <p id="status" class="muted"></p>
@@ -70,7 +70,7 @@ async function refresh() {
   document.getElementById("price").textContent = fmt(price) + " " + nativeSymbol() + " / token";
   document.getElementById("realQuote").textContent = fmt(curve.realQuote) + " " + nativeSymbol();
   document.getElementById("sold").textContent = fmt(curve.tokensSold) + " token";
-  document.getElementById("grad").textContent = curve.graduated ? "Sudah graduasi (kurva berhenti)" : "Di bonding curve";
+  document.getElementById("grad").textContent = curve.graduated ? "Graduated (curve stopped)" : "On bonding curve";
   document.getElementById("creator").textContent = curve.creator;
   if (account) {
     document.getElementById("myBal").textContent = fmt(await token.balanceOf(account)) + " token";
@@ -85,19 +85,19 @@ async function updateQuotes() {
   try {
     if (b && Number(b) > 0) {
       const [out, fee] = await factory.quoteBuy(tokenAddr, ethers.parseEther(b));
-      document.getElementById("buyQuote").textContent = "Estimasi terima: " + fmt(out) + " token (fee " + fmt(fee) + " " + nativeSymbol() + ")";
+      document.getElementById("buyQuote").textContent = "Estimated receive: " + fmt(out) + " token (fee " + fmt(fee) + " " + nativeSymbol() + ")";
     }
     if (s && Number(s) > 0) {
       const [net, fee] = await factory.quoteSell(tokenAddr, ethers.parseEther(s));
-      document.getElementById("sellQuote").textContent = "Estimasi terima: " + fmt(net) + " " + nativeSymbol() + " (fee " + fmt(fee) + " " + nativeSymbol() + ")";
+      document.getElementById("sellQuote").textContent = "Estimated receive: " + fmt(net) + " " + nativeSymbol() + " (fee " + fmt(fee) + " " + nativeSymbol() + ")";
     }
-  } catch (_) { /* abaikan saat input tidak valid */ }
+  } catch (_) { /* ignore while input is invalid */ }
 }
 
 (async () => {
   await loadDeployment();
   if (deploymentNotice(document.getElementById("notice"))) return;
-  if (!tokenAddr) { banner(document.getElementById("notice"), "Parameter ?address= tidak ada.", true); return; }
+  if (!tokenAddr) { banner(document.getElementById("notice"), "Missing ?address= parameter.", true); return; }
   await refresh();
 })();
 
@@ -108,7 +108,7 @@ document.getElementById("connect").onclick = async () => {
     document.getElementById("buyBtn").disabled = false;
     document.getElementById("sellBtn").disabled = false;
     await refresh();
-  } catch (e) { document.getElementById("status").textContent = "Gagal: " + e.message; }
+  } catch (e) { document.getElementById("status").textContent = "Failed: " + e.message; }
 };
 document.getElementById("buyAmount").oninput = updateQuotes;
 document.getElementById("sellAmount").oninput = updateQuotes;
@@ -120,13 +120,13 @@ document.getElementById("buyBtn").onclick = async () => {
     const factory = getWriteFactory(signer);
     const [out] = await getReadFactory().quoteBuy(tokenAddr, ethers.parseEther(amt));
     const minOut = out * 99n / 100n; // slippage 1%
-    status.textContent = "Menunggu tanda tangan…";
+    status.textContent = "Waiting for signature…";
     const tx = await factory.buy(tokenAddr, minOut, { value: ethers.parseEther(amt) });
-    status.textContent = "Terkirim: " + tx.hash + " — menunggu konfirmasi…";
+    status.textContent = "Sent: " + tx.hash + " — waiting for confirmation…";
     await tx.wait();
-    status.textContent = "Beli berhasil. Tx: " + tx.hash;
+    status.textContent = "Buy successful. Tx: " + tx.hash;
     await refresh();
-  } catch (e) { status.textContent = "Gagal: " + (e.shortMessage || e.message); }
+  } catch (e) { status.textContent = "Failed: " + (e.shortMessage || e.message); }
 };
 
 document.getElementById("sellBtn").onclick = async () => {
@@ -138,20 +138,20 @@ document.getElementById("sellBtn").onclick = async () => {
     const fAddr = factoryAddress();
     const allowance = await token.allowance(account, fAddr);
     if (allowance < amount) {
-      status.textContent = "Approve dulu: menunggu tanda tangan…";
+      status.textContent = "Approve first: waiting for signature…";
       const atx = await token.approve(fAddr, amount);
       await atx.wait();
     }
     const factory = getWriteFactory(signer);
     const [net] = await getReadFactory().quoteSell(tokenAddr, amount);
     const minOut = net * 99n / 100n;
-    status.textContent = "Menunggu tanda tangan jual…";
+    status.textContent = "Waiting for sell signature…";
     const tx = await factory.sell(tokenAddr, amount, minOut);
-    status.textContent = "Terkirim: " + tx.hash + " — menunggu konfirmasi…";
+    status.textContent = "Sent: " + tx.hash + " — waiting for confirmation…";
     await tx.wait();
-    status.textContent = "Jual berhasil. Tx: " + tx.hash;
+    status.textContent = "Sell successful. Tx: " + tx.hash;
     await refresh();
-  } catch (e) { status.textContent = "Gagal: " + (e.shortMessage || e.message); }
+  } catch (e) { status.textContent = "Failed: " + (e.shortMessage || e.message); }
 };
 </script>
 </body>
