@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Padhaus — Fair-Launch Launchpad (BSC Testnet Prototype)</title>
 <meta name="description" content="Padhaus is a fair-launch launchpad: launching is free, creators set their own trade fee, and fees are frozen per token at launch.">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261125a">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
-<script src="chains.js?v=20261125a"></script>
-<script src="app.js?v=20261124b"></script>
+<script src="chains.js?v=20261124a"></script>
+<script src="app.js?v=20261125a"></script>
 </head>
 <body>
 <header>
@@ -16,6 +16,7 @@
   <nav>
     <a href="index.html">Tokens</a>
     <a href="launch.html">Launch Token</a>
+    <a href="profile.html" id="profileNavLink" style="display:none">Profile</a>
     <a href="https://x.com/padhaus" target="_blank" rel="noopener">X</a>
   </nav>
   <div class="header-right">
@@ -128,6 +129,7 @@
         <div class="card-title">
           <h3>${esc(t.name)} <span class="muted">($${esc(t.symbol)})</span>${t.curve.graduated ? ' <span class="badge badge-grad">Graduated</span>' : ""}</h3>
           <div class="mono">${t.addr}</div>
+          <div data-creator-slot="${t.addr}"></div>
         </div>
         <span class="muted card-age">${t.createdAt ? timeAgo(t.createdAt) : "—"}</span>
       </div>
@@ -147,6 +149,39 @@
     if (!list) return;
     list.innerHTML = sortedGroupTokens(g).map((t) => cardHtml(g, t)).join("");
     fillMetadata(chainId);
+    fillCreators(chainId);
+  }
+
+  /* Creator identity per card: when the creator wallet has a Padhaus
+   * profile, show its avatar + username linking to the profile page;
+   * otherwise fall back to a shortened address. Lookups are batched and
+   * cached inside fetchProfiles, and any failure simply leaves the
+   * fallback in place. */
+  function fillCreators(chainId) {
+    const g = groups.get(chainId);
+    const body = groupBody(chainId);
+    if (!g || !body) return;
+    const creators = g.tokens.map((t) => t.curve.creator).filter(Boolean);
+    if (!creators.length) return;
+    fetchProfiles(creators).then((profiles) => {
+      for (const t of g.tokens) {
+        const slot = body.querySelector('[data-creator-slot="' + t.addr + '"]');
+        if (!slot) continue;
+        const creator = String(t.curve.creator || "");
+        if (!creator) continue;
+        const profile = profiles.get(creator.toLowerCase());
+        if (profile) {
+          slot.innerHTML = profileChipHtml(creator, profile);
+          const img = slot.querySelector("img.creator-avatar");
+          if (img) img.onerror = () => {
+            img.outerHTML = '<span class="creator-avatar creator-avatar-letter">' +
+              esc((profile.username || "?").charAt(0).toUpperCase()) + "</span>";
+          };
+        } else {
+          slot.innerHTML = '<span class="muted">Creator: </span><span class="mono">' + esc(shortAddress(creator)) + "</span>";
+        }
+      }
+    }).catch(() => {});
   }
 
   function fillMetadata(chainId) {

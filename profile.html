@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Padhaus — Deployer Profile</title>
+<meta name="description" content="Padhaus deployer profiles: the launches behind a wallet, across every Padhaus network.">
+<link rel="stylesheet" href="style.css?v=20261125a">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+<script src="chains.js?v=20261124a"></script>
+<script src="app.js?v=20261125a"></script>
+</head>
+<body>
+<header>
+  <a href="index.html" class="brand">Padhaus</a> <span class="muted">— fair-launch launchpad</span>
+  <nav>
+    <a href="index.html">Tokens</a>
+    <a href="launch.html">Launch Token</a>
+    <a href="profile.html" id="profileNavLink" style="display:none">Profile</a>
+    <a href="https://x.com/padhaus" target="_blank" rel="noopener">X</a>
+  </nav>
+  <div class="header-right">
+    <span class="badge chain-badge">Deployer profile · all networks</span>
+  </div>
+</header>
+<main>
+  <div id="notice" class="banner"></div>
+
+  <div class="card">
+    <label>Wallet address or username</label>
+    <div class="profile-lookup">
+      <input id="lookupInput" placeholder="0x… or username">
+      <button id="lookupBtn" class="secondary">View profile</button>
+    </div>
+    <p class="muted">One profile per wallet, shared across every network. Creating or editing a profile is free — you only sign a message with your wallet, nothing is sent on-chain.</p>
+    <p><button id="connect" class="secondary">Connect Wallet</button> <button id="disconnect" class="secondary" style="display:none">Disconnect</button> <span id="acct" class="muted"></span></p>
+  </div>
+
+  <div id="profileRoot"><p class="muted">Enter a wallet address or username above, or connect your wallet to see your own profile.</p></div>
+  <div id="editRoot"></div>
+</main>
+<footer>
+  <span class="muted">Padhaus — fair-launch launchpad. Profiles are public and signed by their wallet; anyone can verify them.</span>
+</footer>
+<script>
+const params = new URLSearchParams(location.search);
+const profileRoot = document.getElementById("profileRoot");
+const editRoot = document.getElementById("editRoot");
+let signer = null, account = null;
+let viewedAddress = null;   // lowercase address being viewed, once known
+let profile = null;         // stored profile object or null
+let serviceDown = false;
+let pendingAvatar = "";     // ipfs:// URI chosen in the edit form
+let pendingCover = "";
+
+function isOwn() {
+  return !!(account && viewedAddress && account.toLowerCase() === viewedAddress);
+}
+
+function avatarHtml(p, cls) {
+  const url = p && ipfsToHttp(p.avatar);
+  if (url) return '<img class="' + cls + '" src="' + esc(url) + '" alt="" onerror="this.outerHTML=profileAvatarFallback()">';
+  return profileAvatarFallback();
+}
+function profileAvatarFallback() {
+  const letter = profile && profile.username ? profile.username.charAt(0).toUpperCase() : "?";
+  return '<span class="profile-avatar profile-avatar-letter">' + esc(letter) + "</span>";
+}
+
+function renderProfile() {
+  if (!viewedAddress && !profile) {
+    profileRoot.innerHTML = '<p class="muted">Enter a wallet address or username above, or connect your wallet to see your own profile.</p>';
+    renderEdit();
+    return;
+  }
+  const p = profile;
+  const coverUrl = p && ipfsToHttp(p.cover);
+  const title = p ? (p.displayName || ("@" + p.username)) : shortAddress(viewedAddress);
+  const xLink = p && p.xHandle
+    ? ' · <a href="https://x.com/' + esc(p.xHandle) + '" target="_blank" rel="noopener">X — @' + esc(p.xHandle) + "</a>"
+    : "";
+  profileRoot.innerHTML =
+    '<div class="profile-cover">' + (coverUrl ? '<img src="' + esc(coverUrl) + '" alt="" onerror="this.remove()">' : "") + "</div>" +
+    '<div class="profile-head">' + avatarHtml(p, "profile-avatar") +
+      '<div class="card-title"><h2>' + esc(title) + "</h2>" +
+      (p ? '<p class="muted">@' + esc(p.username) + xLink + "</p>" : '<p class="muted">No profile yet</p>') +
+      '<p class="mono">' + esc(viewedAddress || (p && p.address) || "") + "</p></div>" +
+    "</div>" +
+    (p && p.bio ? '<p class="profile-bio">' + esc(p.bio) + "</p>" : "") +
+    (serviceDown ? '<p class="muted">The profile service is not available yet — showing on-chain launches only.</p>' : "") +
+    (!p && !serviceDown ? '<p class="muted">This wallet has not created a Padhaus profile yet.</p>' : "") +
+    '<h3>Tokens launched</h3><p class="muted" id="tokenStats">Scanning every network…</p><div id="tokenList"></div>';
+  renderEdit();
+  loadTokens();
+}
+
+async function loadTokens() {
+  const listEl = document.getElementById("tokenList");
+  const statsEl = document.getElementById("tokenStats");
+  if (!listEl || !viewedAddress) return;
+  const found = [];
+  const networks = new Set();
+  for (const chainId of PADHAUS_CHAIN_ORDER) {
+    if (!factoryAddressFor(chainId)) continue;
+    try {
+      const factory = getReadFactoryFor(chainId);
+      const count = Number(await factory.tokenCount());
+      for (let i = 0; i < count; i++) {
+        const addr = await factory.allTokens(i);
+        const curve = await factory.getCurve(addr);
+        if (String(curve.creator).toLowerCase() !== viewedAddress) continue;
+        const token = getReadTokenFor(addr, chainId);
+        const [name, symbol] = await Promise.all([token.name(), token.symbol()]);
+        found.push({ chainId, addr, name, symbol, metadataURI: curve.metadataURI });
+        networks.add(chainId);
+      }
+    } catch (_) { /* a failing network only skips its own launches */ }
+  }
+  if (!document.getElementById("tokenList")) return; // the view changed meanwhile
+  statsEl.textContent = found.length
+    ? found.length + (found.length === 1 ? " token" : " tokens") + " launched across " + networks.size + (networks.size === 1 ? " network" : " networks") + "."
+    : "No tokens launched from this wallet yet.";
+  listEl.innerHTML = found.map((t) =>
+    '<div class="card profile-token-row">' +
+      '<div class="logo-slot" data-logo-slot="' + t.addr + '">' + tokenLogoPlaceholderHtml(t.symbol) + "</div>" +
+      '<div class="card-title"><h3>' + esc(t.name) + ' <span class="muted">($' + esc(t.symbol) + ")</span></h3>" +
+      '<div class="mono">' + esc(t.addr) + '</div><p class="muted">' + esc(getChain(t.chainId).name) + "</p></div>" +
+      '<a href="token.html?address=' + t.addr + "&chain=" + t.chainId + '"><button class="secondary">Details / Trade</button></a>' +
+    "</div>"
+  ).join("");
+  for (const t of found) {
+    resolveTokenMetadata(t.addr, t.metadataURI).then((meta) => {
+      if (!meta || !meta.image) return;
+      const slot = listEl.querySelector('[data-logo-slot="' + t.addr + '"]');
+      if (slot) {
+        slot.innerHTML = '<img class="token-logo" src="' + esc(meta.image) + '" alt="" loading="lazy">';
+        slot.querySelector("img").onerror = () => { slot.innerHTML = tokenLogoPlaceholderHtml(t.symbol); };
+      }
+    }).catch(() => {});
+  }
+}
+
+function renderEdit() {
+  if (!isOwn()) { editRoot.innerHTML = ""; return; }
+  const p = profile;
+  pendingAvatar = p ? (p.avatar || "") : "";
+  pendingCover = p ? (p.cover || "") : "";
+  editRoot.innerHTML =
+    '<div class="card"><h3>' + (p ? "Edit your profile" : "Create your profile") + "</h3>" +
+    '<label>Username (3-20 characters: lowercase letters, numbers, underscores)</label>' +
+    '<input id="fUsername" maxlength="20" placeholder="e.g. alpha_tester" value="' + esc(p ? p.username : "") + '">' +
+    '<label>Display name (optional)</label>' +
+    '<input id="fDisplayName" maxlength="40" placeholder="e.g. Alpha Tester" value="' + esc(p ? p.displayName : "") + '">' +
+    '<label>Bio (optional, one line)</label>' +
+    '<input id="fBio" maxlength="160" placeholder="What you build, in one line" value="' + esc(p ? p.bio : "") + '">' +
+    '<label>X handle (optional, no @)</label>' +
+    '<input id="fX" maxlength="15" placeholder="e.g. padhaus" value="' + esc(p ? p.xHandle : "") + '">' +
+    '<label>Avatar image (optional)</label>' +
+    '<input id="fAvatar" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>' +
+    '<label for="fAvatar" class="file-pick">Choose image</label><span id="avatarName" class="muted">' + (pendingAvatar ? "Current avatar kept" : "No file chosen") + '</span>' +
+    '<div class="image-preview" id="avatarPreviewWrap" style="display:none"><img id="avatarPreview" class="token-logo" alt="Avatar preview"></div>' +
+    '<label>Cover image (optional)</label>' +
+    '<input id="fCover" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>' +
+    '<label for="fCover" class="file-pick">Choose image</label><span id="coverName" class="muted">' + (pendingCover ? "Current cover kept" : "No file chosen") + '</span>' +
+    '<div class="image-preview" id="coverPreviewWrap" style="display:none"><img id="coverPreview" class="profile-cover-img" alt="Cover preview"></div>' +
+    '<p><button id="saveProfile">Save profile</button> <span id="saveStatus" class="muted"></span></p>' +
+    '<p class="muted">Saving asks your wallet to sign a message listing exactly these fields — check it before you confirm. No transaction, no gas.</p></div>';
+  wireImageInput("fAvatar", "avatarName", "avatarPreviewWrap", "avatarPreview", (uri) => { pendingAvatar = uri; });
+  wireImageInput("fCover", "coverName", "coverPreviewWrap", "coverPreview", (uri) => { pendingCover = uri; });
+  document.getElementById("saveProfile").onclick = saveProfile;
+}
+
+function wireImageInput(inputId, nameId, wrapId, imgId, apply) {
+  const input = document.getElementById(inputId);
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const nameEl = document.getElementById(nameId);
+    nameEl.textContent = "Uploading…";
+    try {
+      const cid = await uploadFileToRelay(file);
+      apply("ipfs://" + cid);
+      nameEl.textContent = file.name + " — uploaded";
+      const wrap = document.getElementById(wrapId);
+      const img = document.getElementById(imgId);
+      img.src = ipfsToHttp("ipfs://" + cid);
+      wrap.style.display = "";
+    } catch (e) {
+      nameEl.textContent = "Upload failed: " + e.message;
+    }
+  };
+}
+
+async function saveProfile() {
+  const status = document.getElementById("saveStatus");
+  const username = document.getElementById("fUsername").value.trim().toLowerCase();
+  const fields = {
+    address: account,
+    username,
+    displayName: document.getElementById("fDisplayName").value.trim(),
+    bio: document.getElementById("fBio").value.trim(),
+    xHandle: document.getElementById("fX").value.trim().replace(/^@+/, ""),
+    avatar: pendingAvatar,
+    cover: pendingCover,
+    timestamp: Math.floor(Date.now() / 1000)
+  };
+  if (!/^[a-z0-9_]{3,20}$/.test(fields.username)) {
+    status.textContent = "Username must be 3-20 characters: lowercase letters, numbers and underscores only.";
+    return;
+  }
+  try {
+    status.textContent = "Waiting for your signature…";
+    profile = await saveProfileViaApi(signer, fields);
+    serviceDown = false;
+    status.textContent = "Profile saved.";
+    renderProfile();
+  } catch (e) {
+    status.textContent = "Failed: " + (e.shortMessage || e.message);
+  }
+}
+
+async function loadView() {
+  const a = (params.get("a") || "").toLowerCase();
+  const u = (params.get("u") || "").toLowerCase();
+  if (a && /^0x[0-9a-f]{40}$/.test(a)) {
+    viewedAddress = a;
+    const got = await fetchProfileByAddress(a);
+    profile = got.profile; serviceDown = got.serviceDown;
+  } else if (u) {
+    const got = await fetchProfileByUsername(u);
+    profile = got.profile; serviceDown = got.serviceDown;
+    if (profile) viewedAddress = profile.address;
+    else {
+      profileRoot.innerHTML = '<p class="muted">No profile found for username "' + esc(u) + '".</p>';
+      renderEdit();
+      return;
+    }
+  }
+  renderProfile();
+}
+
+document.getElementById("lookupBtn").onclick = () => {
+  const v = document.getElementById("lookupInput").value.trim();
+  if (!v) return;
+  const target = /^0x[0-9a-fA-F]{40}$/.test(v)
+    ? "profile.html?a=" + v.toLowerCase()
+    : "profile.html?u=" + encodeURIComponent(v.toLowerCase());
+  location.href = target;
+};
+document.getElementById("lookupInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("lookupBtn").click();
+});
+
+document.getElementById("connect").onclick = async () => {
+  try {
+    ({ signer, account } = await connectWallet());
+    document.getElementById("acct").textContent = account;
+    document.getElementById("disconnect").style.display = "";
+    if (!viewedAddress) {
+      viewedAddress = account.toLowerCase();
+      const got = await fetchProfileByAddress(viewedAddress);
+      profile = got.profile; serviceDown = got.serviceDown;
+    }
+    renderProfile();
+  } catch (e) {
+    banner(document.getElementById("notice"), "Failed: " + e.message, true);
+  }
+};
+document.getElementById("disconnect").onclick = async () => { await disconnectWallet(); };
+window.addEventListener("padhaus:disconnected", () => {
+  signer = null; account = null;
+  document.getElementById("acct").textContent = "";
+  document.getElementById("disconnect").style.display = "none";
+  renderEdit();
+});
+
+(async () => {
+  await loadDeployment();
+  await loadView();
+})();
+</script>
+</body>
+</html>

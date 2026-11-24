@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Padhaus — Token Details</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261125a">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
-<script src="chains.js?v=20261125a"></script>
-<script src="app.js?v=20261124b"></script>
+<script src="chains.js?v=20261124a"></script>
+<script src="app.js?v=20261125a"></script>
 </head>
 <body>
 <header>
@@ -15,6 +15,7 @@
   <nav>
     <a href="index.html">Tokens</a>
     <a href="launch.html">Launch Token</a>
+    <a href="profile.html" id="profileNavLink" style="display:none">Profile</a>
     <a href="https://x.com/padhaus" target="_blank" rel="noopener">X</a>
   </nav>
   <div class="header-right">
@@ -85,6 +86,7 @@ async function refresh() {
   document.getElementById("sold").textContent = fmt(curve.tokensSold) + " token";
   document.getElementById("grad").textContent = curve.graduated ? "Graduated (curve stopped)" : "On bonding curve";
   document.getElementById("creator").textContent = curve.creator;
+  fillCreatorProfile(curve.creator);
   document.getElementById("buybackShare").textContent = (Number(curve.buybackBps) / 100) + "% of the creator share";
   document.getElementById("communityShare").textContent = (Number(curve.communityBps) / 100) + "% of the creator share";
   document.getElementById("communityWallet").textContent = Number(curve.communityBps) > 0 ? curve.communityWallet : "—";
@@ -112,6 +114,20 @@ async function refresh() {
     if (linksHtml) document.getElementById("links").innerHTML = linksHtml;
   }).catch(() => {});
   await updateQuotes();
+}
+
+/* When the creator wallet has a Padhaus profile, swap the bare
+ * address in the Creator row for the profile chip (the full address
+ * stays next to it). Any failure leaves the address as rendered. */
+async function fillCreatorProfile(creator) {
+  const cell = document.getElementById("creator");
+  if (!cell || !creator) return;
+  const profiles = await fetchProfiles([creator]).catch(() => null);
+  const profile = profiles && profiles.get(String(creator).toLowerCase());
+  if (!profile) return;
+  cell.innerHTML = profileChipHtml(creator, profile) + ' <span class="mono muted">' + esc(creator) + "</span>";
+  const img = cell.querySelector("img.creator-avatar");
+  if (img) img.onerror = () => { img.remove(); };
 }
 
 async function updateQuotes() {

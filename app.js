@@ -288,7 +288,9 @@ async function finishConnect(eip1193, kind) {
   const signer = await provider.getSigner();
   activeEip1193 = eip1193;
   activeWalletKind = kind;
-  return { provider, signer, account: await signer.getAddress() };
+  const account = await signer.getAddress();
+  window.dispatchEvent(new CustomEvent("padhaus:connected", { detail: { account } }));
+  return { provider, signer, account };
 }
 
 async function connectInjectedWallet() {
@@ -716,10 +718,11 @@ async function scanFactoryEventsFor(chainId, onUpdate) {
       if (!parsed) continue;
       const tokenKey = String(parsed.args.token).toLowerCase();
       const agg = cache.tokens[tokenKey] || (cache.tokens[tokenKey] = {
-        createdBlock: null, createdAt: null, volumeWei: "0", trades: 0, lastBlock: null, lastAt: null
+        createdBlock: null, createdAt: null, volumeWei: "0", trades: 0, lastBlock: null, lastAt: null, creator: null
       });
       if (parsed.name === "TokenCreated") {
         if (agg.createdBlock === null || log.blockNumber < agg.createdBlock) agg.createdBlock = log.blockNumber;
+        if (parsed.args.creator) agg.creator = String(parsed.args.creator).toLowerCase();
       } else if (parsed.name === "Buy" || parsed.name === "Sell") {
         const amount = parsed.name === "Buy"
           ? parsed.args.quoteInNet + parsed.args.fee
@@ -759,3 +762,170 @@ async function scanFactoryEventsFor(chainId, onUpdate) {
 async function scanFactoryEvents(onUpdate) {
   return scanFactoryEventsFor(activeChainId, onUpdate);
 }
+
+/* ---------- Deployer profiles ----------
+ * Optional public profiles keyed by wallet address (the same profile
+ * on every chain). They live behind a small API on the same relay as
+ * the image uploads; saving requires an EIP-191 personal_sign signature
+ * from the profile's own wallet, verified server-side. Everything here
+ * degrades gracefully: when the API is unreachable or a wallet has no
+ * profile, the UI falls back to the bare address, exactly as before.
+ * Lookups are batched and cached in localStorage (5 minutes), mirroring
+ * the token scan cache, so profile checks never block rendering. */
+const PADHAUS_PROFILE_API = "https://pogent-upload.vercel.app/api/profile";
+const PROFILE_CACHE_KEY = "padhaus.profiles.v1";
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function shortAddress(addr) {
+  const a = String(addr || "");
+  return a.length > 12 ? a.slice(0, 6) + "…" + a.slice(-4) : a;
+}
+
+/* The exact text the wallet signs for a profile save. The relay
+ * (api/profile.js) rebuilds the identical string from the submitted
+ * fields and recovers the signer from it — any change here must be
+ * mirrored there. */
+function buildProfileMessage(f) {
+  return [
+    "Padhaus profile update",
+    "",
+    "Address: " + f.address,
+    "Username: " + f.username,
+    "Display name: " + (f.displayName || ""),
+    "Bio: " + (f.bio || ""),
+    "X: " + (f.xHandle || ""),
+    "Avatar: " + (f.avatar || ""),
+    "Cover: " + (f.cover || ""),
+    "Timestamp: " + f.timestamp
+  ].join("\n");
+}
+
+function loadProfileCache() {
+  try { return JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY)) || {}; }
+  catch (_) { return {}; }
+}
+
+function saveProfileCache(cache) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(cache)); } catch (_) { /* storage full or unavailable */ }
+}
+
+async function fetchJsonWithTimeout(url, options, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms || 6000);
+  try {
+    return await fetch(url, { ...(options || {}), signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* Batch-resolves profiles for a list of addresses. Resolves with a Map
+ * of lowercase address -> profile object or null. Never rejects. */
+async function fetchProfiles(addresses) {
+  const result = new Map();
+  const wanted = [...new Set((addresses || []).filter(Boolean).map((a) => String(a).toLowerCase()))];
+  const cache = loadProfileCache();
+  const now = Date.now();
+  const misses = [];
+  for (const addr of wanted) {
+    const hit = cache[addr];
+    if (hit && now - hit.t < PROFILE_CACHE_TTL_MS) result.set(addr, hit.p);
+    else misses.push(addr);
+  }
+  if (misses.length) {
+    try {
+      const res = await fetchJsonWithTimeout(PADHAUS_PROFILE_API + "?addresses=" + misses.join(","));
+      if (res.ok) {
+        const data = await res.json();
+        for (const addr of misses) {
+          const p = (data && data.profiles && data.profiles[addr]) || null;
+          result.set(addr, p);
+          cache[addr] = { p, t: now };
+        }
+      } else {
+        for (const addr of misses) result.set(addr, null);
+      }
+    } catch (_) {
+      for (const addr of misses) result.set(addr, null);
+    }
+    saveProfileCache(cache);
+  }
+  return result;
+}
+
+/* Fresh single-profile lookups for the profile page (no cache).
+ * Returns { profile, serviceDown }: serviceDown means the API could
+ * not be reached or is not configured yet, as opposed to "this wallet
+ * simply has no profile". */
+async function fetchProfileByAddress(address) {
+  try {
+    const res = await fetchJsonWithTimeout(PADHAUS_PROFILE_API + "?address=" + encodeURIComponent(address));
+    if (res.status === 404) return { profile: null, serviceDown: false };
+    if (!res.ok) return { profile: null, serviceDown: true };
+    const data = await res.json();
+    return { profile: (data && data.profile) || null, serviceDown: false };
+  } catch (_) {
+    return { profile: null, serviceDown: true };
+  }
+}
+
+async function fetchProfileByUsername(username) {
+  try {
+    const res = await fetchJsonWithTimeout(PADHAUS_PROFILE_API + "?username=" + encodeURIComponent(username));
+    if (res.status === 404) return { profile: null, serviceDown: false };
+    if (!res.ok) return { profile: null, serviceDown: true };
+    const data = await res.json();
+    return { profile: (data && data.profile) || null, serviceDown: false };
+  } catch (_) {
+    return { profile: null, serviceDown: true };
+  }
+}
+
+/* Signs the profile fields with the connected wallet and saves them
+ * through the API. Resolves with the stored profile; throws an Error
+ * carrying the server's message on failure. */
+async function saveProfileViaApi(signer, fields) {
+  const signature = await signer.signMessage(buildProfileMessage(fields));
+  const res = await fetchJsonWithTimeout(PADHAUS_PROFILE_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...fields, signature })
+  }, 15000);
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* non-JSON error body */ }
+  if (!res.ok || !data || !data.profile) {
+    throw new Error((data && data.error) || ("Saving the profile failed (HTTP " + res.status + ")."));
+  }
+  const cache = loadProfileCache();
+  cache[String(fields.address).toLowerCase()] = { p: data.profile, t: Date.now() };
+  saveProfileCache(cache);
+  return data.profile;
+}
+
+/* A compact linked identity for a token creator: avatar + name, or ""
+ * when the wallet has no profile (callers then show the address). */
+function profileChipHtml(address, profile) {
+  if (!profile) return "";
+  const label = profile.displayName || ("@" + profile.username);
+  const avatar = ipfsToHttp(profile.avatar);
+  const img = avatar
+    ? '<img class="creator-avatar" src="' + esc(avatar) + '" alt="" loading="lazy">'
+    : '<span class="creator-avatar creator-avatar-letter">' + esc((profile.username || "?").charAt(0).toUpperCase()) + "</span>";
+  return '<a class="creator-chip" href="profile.html?a=' + esc(profile.address || address) + '">' + img +
+    "<span>" + esc(label) + ' <span class="muted">@' + esc(profile.username) + "</span></span></a>";
+}
+
+/* Header "Profile" link: hidden until a wallet connects on any page,
+ * then points at the connected wallet's own profile. */
+function refreshProfileNav(account) {
+  document.querySelectorAll("#profileNavLink").forEach((el) => {
+    if (account) {
+      el.style.display = "";
+      el.href = "profile.html?a=" + account;
+    } else {
+      el.style.display = "none";
+    }
+  });
+}
+window.addEventListener("padhaus:connected", (e) => refreshProfileNav(e.detail && e.detail.account));
+window.addEventListener("padhaus:disconnected", () => refreshProfileNav(null));

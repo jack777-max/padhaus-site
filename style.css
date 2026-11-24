@@ -110,3 +110,22 @@ a { color: var(--accent); }
 
 .launch-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
 .launch-actions #launch { margin-left: auto; }
+
+/* ---------- deployer profiles ---------- */
+.creator-chip { display: inline-flex; align-items: center; gap: .45rem; color: var(--text); text-decoration: none; font-weight: 600; margin-top: .25rem; }
+.creator-chip:hover { color: var(--accent); }
+.creator-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--surface-2); border: 1px solid var(--border-strong); flex: 0 0 auto; display: inline-block; }
+.creator-avatar-letter { display: inline-flex; align-items: center; justify-content: center; color: var(--accent); font-size: .8rem; font-weight: 800; }
+.profile-lookup { display: flex; gap: .6rem; align-items: flex-start; }
+.profile-lookup input { flex: 1; margin-top: 0; }
+.profile-cover { height: 180px; border-radius: 12px; border: 1px solid var(--border); background: linear-gradient(120deg, var(--surface-2), var(--surface)); overflow: hidden; margin-top: 1rem; }
+.profile-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-head { display: flex; gap: 1rem; align-items: flex-end; margin-top: -36px; padding: 0 1rem; position: relative; }
+.profile-head .card-title h2 { margin: 0 0 .2rem; }
+.profile-head .card-title p { margin: .1rem 0; }
+.profile-avatar { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; border: 3px solid var(--bg); background: var(--surface-2); display: block; flex: 0 0 auto; }
+.profile-avatar-letter { display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: 800; color: var(--accent); }
+.profile-bio { margin: 1rem 0 0; max-width: 640px; }
+.profile-token-row { display: flex; gap: .9rem; align-items: center; }
+.profile-token-row .card-title { flex: 1; min-width: 0; }
+.profile-cover-img { max-width: 100%; height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-strong); display: block; }
