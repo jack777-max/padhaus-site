@@ -31,23 +31,25 @@ const PADHAUS_CHAINS = {
   97: {
     chainId: 97,
     name: "BSC Testnet",
-    rpcUrl: "https://bsc-testnet-rpc.publicnode.com",
-    factoryAddress: "0xa6Bde26F2d09898DdA8Fc72aCD7BFDA0129f7FD1",
+    rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",
+    factoryAddress: "0xc02FbE0BEBdD351EC5bb0d72921F7c6C62af454B",
     nativeSymbol: "tBNB",
     nativeName: "Test BNB",
     explorerUrl: "https://testnet.bscscan.com",
     testnet: true
   },
-  // Preset — not deployed yet (factoryAddress null). The graduation router
-  // for this chain is still TODO-VERIFY (see chains/robinhood-chain.json).
+  // OFFICIAL factory deployed 2026-11-25 from the official deployer wallet
+  // (see deployment-robinhood-chain.json). Registered here on Ahmad's order
+  // 2026-11-25 01:30 WIB but NOT published yet — this file only goes live
+  // when the site repo is synced + pushed, which waits for his go.
   4663: {
     chainId: 4663,
     name: "Robinhood Chain",
     rpcUrl: "https://rpc.mainnet.chain.robinhood.com",
-    factoryAddress: null,
+    factoryAddress: "0x54F804803C71aDA30e32c72EFEd0D52109004752",
     nativeSymbol: "ETH",
     nativeName: "Ether",
-    explorerUrl: null,
+    explorerUrl: "https://robinhoodchain.blockscout.com",
     testnet: false
   },
   // Preset — not deployed yet (factoryAddress null).
